@@ -21,6 +21,7 @@ from poi_admin.core.config import get_settings  # noqa: E402
 from poi_admin.core.database import ensure_database_directory  # noqa: E402
 from poi_admin.core.orm import Base  # noqa: E402
 from poi_admin.identity import models as identity_models  # noqa: E402, F401
+from poi_admin.local_life import models as local_life_models  # noqa: E402, F401
 from poi_admin.operations import models as operation_models  # noqa: E402, F401
 from poi_admin.stores import models as store_models  # noqa: E402, F401
 

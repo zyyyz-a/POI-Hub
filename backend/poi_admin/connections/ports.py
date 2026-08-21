@@ -45,11 +45,18 @@ class GatewayTerminalError(GatewayError):
 
 
 @dataclass(frozen=True, slots=True)
+class SkuResult:
+    external_id: str
+    merchant_sku_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ProductResult:
     external_id: str
     name: str
     status: str = "draft"
     raw: dict[str, Any] = field(default_factory=dict)
+    skus: tuple[SkuResult, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,5 +167,6 @@ __all__ = [
     "PoiResult",
     "ProductResult",
     "ServicePoiGateway",
+    "SkuResult",
     "VoucherResult",
 ]

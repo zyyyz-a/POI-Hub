@@ -42,6 +42,19 @@ class OperationService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    async def get_by_idempotency_key(
+        self, tenant_id: str, idempotency_key: str
+    ) -> IntegrationOperation | None:
+        stored_key = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
+        return (
+            await self.session.execute(
+                select(IntegrationOperation).where(
+                    IntegrationOperation.tenant_id == tenant_id,
+                    IntegrationOperation.idempotency_key == stored_key,
+                )
+            )
+        ).scalar_one_or_none()
+
     async def enqueue(
         self,
         tenant_id: str,
@@ -54,14 +67,7 @@ class OperationService:
         max_attempts: int = 8,
     ) -> IntegrationOperation:
         stored_key = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
-        existing = (
-            await self.session.execute(
-                select(IntegrationOperation).where(
-                    IntegrationOperation.tenant_id == tenant_id,
-                    IntegrationOperation.idempotency_key == stored_key,
-                )
-            )
-        ).scalar_one_or_none()
+        existing = await self.get_by_idempotency_key(tenant_id, idempotency_key)
         if existing is not None:
             return existing
         operation = IntegrationOperation(

@@ -29,9 +29,11 @@ class OperationWorker:
         if handlers is None:
             if settings is None:
                 raise ValueError("settings are required for application operation handlers")
+            from poi_admin.local_life.products import product_operation_handlers
             from poi_admin.stores.operations import store_operation_handlers
 
             handlers = store_operation_handlers(session, settings)
+            handlers.update(product_operation_handlers(session, settings))
         self.handlers = handlers
 
     async def run_once(self) -> IntegrationOperation | None:

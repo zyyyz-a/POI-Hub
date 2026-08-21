@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import hashlib
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, ClassVar
 
 from .ports import (
     GatewayTerminalError,
@@ -11,6 +12,7 @@ from .ports import (
     OrderResult,
     PoiResult,
     ProductResult,
+    SkuResult,
     VoucherResult,
 )
 
@@ -44,31 +46,62 @@ class _ScenarioMixin:
             raise GatewayTerminalError("mock terminal error", code=code)
 
 
+@dataclass(slots=True)
+class _LocalLifeState:
+    products: dict[str, ProductResult] = field(default_factory=dict)
+    stocks: dict[tuple[str, str], int] = field(default_factory=dict)
+    vouchers: dict[str, VoucherResult] = field(default_factory=dict)
+
+
 class MockLocalLifeGateway(_ScenarioMixin):
+    _states: ClassVar[dict[str, _LocalLifeState]] = {}
+
     def __init__(self, tenant_id: str, *, scenario: str = "healthy") -> None:
         super().__init__(tenant_id, scenario=scenario)
-        self._products: dict[str, ProductResult] = {}
-        self._stocks: dict[tuple[str, str], int] = {}
-        self._vouchers: dict[str, VoucherResult] = {
-            f"mock-voucher-{_short(tenant_id)}-1": VoucherResult(
-                external_id=f"mock-voucher-{_short(tenant_id)}-1",
-                state="available",
-                product_id="mock-product-seeded",
-            ),
-            f"mock-voucher-{_short(tenant_id)}-2": VoucherResult(
-                external_id=f"mock-voucher-{_short(tenant_id)}-2",
-                state="available",
-                product_id="mock-product-seeded",
-            ),
-        }
+        state = self._states.setdefault(tenant_id, _LocalLifeState())
+        if not state.vouchers:
+            state.vouchers = {
+                f"mock-voucher-{_short(tenant_id)}-1": VoucherResult(
+                    external_id=f"mock-voucher-{_short(tenant_id)}-1",
+                    state="available",
+                    product_id="mock-product-seeded",
+                ),
+                f"mock-voucher-{_short(tenant_id)}-2": VoucherResult(
+                    external_id=f"mock-voucher-{_short(tenant_id)}-2",
+                    state="available",
+                    product_id="mock-product-seeded",
+                ),
+            }
+        self._products = state.products
+        self._stocks = state.stocks
+        self._vouchers = state.vouchers
 
     async def create_product(self, payload: dict[str, Any]) -> ProductResult:
         self._check("create_product")
         external_id = "mock-product-" + _short(
             self.tenant_id + str(payload.get("merchant_product_id", len(self._products) + 1))
         )
+        existing = self._products.get(external_id)
+        if existing is not None:
+            return existing
+        raw_skus = payload.get("skus")
+        sku_payloads = raw_skus if isinstance(raw_skus, list) and raw_skus else [{}]
+        skus: list[SkuResult] = []
+        for index, sku_payload in enumerate(sku_payloads):
+            item = sku_payload if isinstance(sku_payload, dict) else {}
+            merchant_sku_id = str(item.get("merchant_sku_id") or f"sku-{index + 1}")
+            external_sku_id = (
+                "sku-1"
+                if not isinstance(raw_skus, list) or not raw_skus
+                else "mock-sku-" + _short(external_id + merchant_sku_id)
+            )
+            skus.append(SkuResult(external_sku_id, merchant_sku_id))
         result = ProductResult(
-            external_id, str(payload.get("name", "Mock 团购商品")), raw=dict(payload)
+            external_id,
+            str(payload.get("name", "Mock 团购商品")),
+            "under_review",
+            dict(payload),
+            tuple(skus),
         )
         self._products[external_id] = result
         return result
@@ -81,6 +114,7 @@ class MockLocalLifeGateway(_ScenarioMixin):
             str(payload.get("name", current.name)),
             str(payload.get("status", current.status)),
             {**current.raw, **payload},
+            current.skus,
         )
         self._products[external_id] = result
         return result
@@ -88,7 +122,7 @@ class MockLocalLifeGateway(_ScenarioMixin):
     async def get_product(self, external_id: str) -> ProductResult:
         self._check("get_product")
         if external_id not in self._products:
-            return ProductResult(external_id, "Mock 商品", raw={"external_id": external_id})
+            raise GatewayTerminalError("product was not found", code="product_not_found")
         return self._products[external_id]
 
     async def audit_free_update_product(
@@ -104,11 +138,14 @@ class MockLocalLifeGateway(_ScenarioMixin):
 
     async def delete_product(self, external_id: str) -> None:
         self._check("delete_product")
+        product = await self.get_product(external_id)
         self._products.pop(external_id, None)
+        for sku in product.skus:
+            self._stocks.pop((external_id, sku.external_id), None)
 
     async def _set_product_status(self, external_id: str, status: str) -> ProductResult:
         current = await self.get_product(external_id)
-        result = ProductResult(external_id, current.name, status, current.raw)
+        result = ProductResult(external_id, current.name, status, current.raw, current.skus)
         self._products[external_id] = result
         return result
 
@@ -128,6 +165,9 @@ class MockLocalLifeGateway(_ScenarioMixin):
         self._check("update_stock")
         if stock < 0:
             raise GatewayTerminalError("stock cannot be negative", code="invalid_stock")
+        product = await self.get_product(external_id)
+        if sku_id not in {sku.external_id for sku in product.skus}:
+            raise GatewayTerminalError("SKU was not found", code="sku_not_found")
         self._stocks[(external_id, sku_id)] = stock
         return {"product_id": external_id, "sku_id": sku_id, "stock": stock}
 
@@ -135,6 +175,9 @@ class MockLocalLifeGateway(_ScenarioMixin):
         self, external_id: str, sku_id: str, codes: list[str]
     ) -> dict[str, Any]:
         self._check("upload_voucher_codes")
+        product = await self.get_product(external_id)
+        if sku_id not in {sku.external_id for sku in product.skus}:
+            raise GatewayTerminalError("SKU was not found", code="sku_not_found")
         if len(codes) != len(set(codes)):
             raise GatewayTerminalError("voucher codes must be unique", code="duplicate_code")
         return {"product_id": external_id, "sku_id": sku_id, "accepted_count": len(codes)}
