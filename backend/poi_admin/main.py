@@ -1,0 +1,36 @@
+"""FastAPI application factory and process resource lifecycle."""
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from .core.config import Settings, get_settings
+from .core.database import create_database
+from .core.health import health_router
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+    database = create_database(application.state.settings)
+    application.state.database = database
+    application.state.db = database
+    try:
+        yield
+    finally:
+        await database.dispose()
+        application.state.database = None
+        application.state.db = None
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    application = FastAPI(title="POI Hub", version="0.1.0", lifespan=lifespan)
+    application.state.settings = settings or get_settings()
+    application.include_router(health_router, prefix="/api/v1")
+    return application
+
+
+app = create_app()
+
+
+__all__ = ["app", "create_app", "lifespan"]
