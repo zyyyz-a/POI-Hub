@@ -429,9 +429,9 @@ class StoreService:
                         StorePoiMapping.store_id == store_id,
                         StorePoiMapping.service_poi_id == service_poi_id,
                     ),
-                )
+                ).limit(1)
             )
-        ).scalar_one_or_none()
+        ).scalars().first()
         if conflict is not None:
             if conflict.store_id == store_id and conflict.service_poi_id == service_poi_id:
                 return conflict

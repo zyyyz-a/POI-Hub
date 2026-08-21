@@ -96,6 +96,41 @@ async def test_mapping_constraints_and_tenant_isolation(client) -> None:
 
 
 @pytest.mark.asyncio
+async def test_cross_mapping_conflict_returns_domain_error(client) -> None:
+    database = client._transport.app.state.database  # type: ignore[attr-defined]
+    async with database.session_factory() as session:
+        tenant = (
+            await session.execute(select(Tenant).where(Tenant.slug == "demo"))
+        ).scalar_one()
+        actor = (
+            await session.execute(select(User).where(User.is_platform_admin.is_(True)))
+        ).scalar_one()
+        connection = WeChatConnection(
+            tenant_id=tenant.id,
+            capability=Capability.SERVICE_POI.value,
+            mode=ConnectionMode.MOCK.value,
+        )
+        session.add(connection)
+        await session.commit()
+        service = StoreService(session)
+        first = await service.create_store(
+            tenant.id, code="CROSS-A", name="Store A", address="Address A"
+        )
+        second = await service.create_store(
+            tenant.id, code="CROSS-B", name="Store B", address="Address B"
+        )
+        pois = await service.sync_pois(tenant.id, connection, actor_user_id=actor.id)
+        await service.manual_map(tenant.id, first.id, pois[0].id, actor.id)
+        await service.manual_map(tenant.id, second.id, pois[1].id, actor.id)
+
+        with pytest.raises(StoreServiceError) as conflict:
+            await service.manual_map(tenant.id, first.id, pois[1].id, actor.id)
+
+        assert conflict.value.code == "mapping_conflict"
+        assert conflict.value.status_code == 409
+
+
+@pytest.mark.asyncio
 async def test_poi_sync_classifies_gateway_failures(client) -> None:
     database = client._transport.app.state.database  # type: ignore[attr-defined]
     async with database.session_factory() as session:

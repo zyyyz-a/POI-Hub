@@ -4,6 +4,8 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from poi_admin.connections.models import WeChatConnection
+from poi_admin.connections.ports import Capability, ConnectionMode
 from poi_admin.core.permissions import Role
 from poi_admin.core.security import hash_password
 from poi_admin.identity.models import Membership, Tenant, User
@@ -144,12 +146,92 @@ async def test_mock_poi_sync_only_suggests_then_human_confirms(client: AsyncClie
 
     assert candidates.json()
     assert mappings_before.json() == []
+    dismissed = await client.post(
+        f"/api/v1/match-candidates/{candidates.json()[1]['id']}/dismiss",
+        headers=headers,
+    )
+    assert dismissed.status_code == 200
+    assert dismissed.json()["dismissed_at"] is not None
 
     confirmed = await client.post(
         f"/api/v1/match-candidates/{candidates.json()[0]['id']}/confirm", headers=headers
     )
     assert confirmed.status_code == 201
     assert confirmed.json()["state"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_mapping_command_api_enforces_csrf_and_reports_cross_conflict(
+    client: AsyncClient,
+) -> None:
+    csrf, tenant_id = await login_admin(client)
+    headers = {"X-CSRF-Token": csrf, "X-Tenant-ID": tenant_id}
+    database = client._transport.app.state.database  # type: ignore[attr-defined]
+    async with database.session_factory() as session:
+        actor = (
+            await session.execute(select(User).where(User.is_platform_admin.is_(True)))
+        ).scalar_one()
+        connection = WeChatConnection(
+            tenant_id=tenant_id,
+            capability=Capability.SERVICE_POI.value,
+            mode=ConnectionMode.MOCK.value,
+        )
+        session.add(connection)
+        await session.commit()
+        service = StoreService(session)
+        first = await service.create_store(
+            tenant_id, code="API-CROSS-A", name="Store A", address="Address A"
+        )
+        second = await service.create_store(
+            tenant_id, code="API-CROSS-B", name="Store B", address="Address B"
+        )
+        pois = await service.sync_pois(tenant_id, connection, actor_user_id=actor.id)
+        first_store_id, second_store_id = first.id, second.id
+        first_poi_id, second_poi_id = pois[0].id, pois[1].id
+
+    first_mapping_payload = {
+        "store_id": first_store_id,
+        "service_poi_id": first_poi_id,
+    }
+    missing_csrf = await client.post(
+        "/api/v1/store-poi-mappings/manual",
+        headers={"X-Tenant-ID": tenant_id},
+        json=first_mapping_payload,
+    )
+    assert missing_csrf.status_code == 403
+
+    first_mapping = await client.post(
+        "/api/v1/store-poi-mappings/manual",
+        headers=headers,
+        json=first_mapping_payload,
+    )
+    second_mapping = await client.post(
+        "/api/v1/store-poi-mappings/manual",
+        headers=headers,
+        json={"store_id": second_store_id, "service_poi_id": second_poi_id},
+    )
+    assert first_mapping.status_code == 201
+    assert second_mapping.status_code == 201
+
+    cross_conflict = await client.post(
+        "/api/v1/store-poi-mappings/manual",
+        headers=headers,
+        json={"store_id": first_store_id, "service_poi_id": second_poi_id},
+    )
+    assert cross_conflict.status_code == 409
+    assert cross_conflict.json()["detail"]["code"] == "mapping_conflict"
+
+    mapping_id = first_mapping.json()["id"]
+    missing_unbind_csrf = await client.post(
+        f"/api/v1/store-poi-mappings/{mapping_id}/unbind",
+        headers={"X-Tenant-ID": tenant_id},
+    )
+    assert missing_unbind_csrf.status_code == 403
+    unbound = await client.post(
+        f"/api/v1/store-poi-mappings/{mapping_id}/unbind", headers=headers
+    )
+    assert unbound.status_code == 200
+    assert unbound.json()["state"] == "unbound"
 
 
 @pytest.mark.asyncio
@@ -228,3 +310,14 @@ async def test_auditor_can_read_store_workspace_but_cannot_write(client: AsyncCl
         headers={**read_headers, "X-CSRF-Token": login.json()["csrf_token"]},
     )
     assert denied_dismiss.status_code == 403
+    denied_manual = await client.post(
+        "/api/v1/store-poi-mappings/manual",
+        headers={**read_headers, "X-CSRF-Token": login.json()["csrf_token"]},
+        json={"store_id": "missing", "service_poi_id": "missing"},
+    )
+    denied_unbind = await client.post(
+        "/api/v1/store-poi-mappings/missing/unbind",
+        headers={**read_headers, "X-CSRF-Token": login.json()["csrf_token"]},
+    )
+    assert denied_manual.status_code == 403
+    assert denied_unbind.status_code == 403
