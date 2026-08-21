@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
+
+from poi_admin.identity.models import Membership, Tenant, User
 
 
 @pytest.mark.asyncio
@@ -82,3 +85,71 @@ async def test_cross_tenant_members_are_not_visible(client: AsyncClient) -> None
     assert second_members.status_code == 200
     assert [item["email"] for item in first_members.json()] == ["first@example.com"]
     assert second_members.json() == []
+
+
+@pytest.mark.asyncio
+async def test_acceptance_rejects_suspended_tenant(client: AsyncClient) -> None:
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@example.com", "password": "correct-horse-battery-staple"},
+    )
+    csrf = login.cookies["poi_csrf"]
+    created = await client.post(
+        "/api/v1/platform/tenants",
+        headers={"X-CSRF-Token": csrf},
+        json={"name": "待停用租户", "slug": "suspended-tenant"},
+    )
+    tenant_id = created.json()["id"]
+    invitation = await client.post(
+        "/api/v1/members/invitations",
+        headers={"X-CSRF-Token": csrf, "X-Tenant-ID": tenant_id},
+        json={"email": "suspended-user@example.com", "role": "operator"},
+    )
+    assert invitation.status_code == 201
+
+    database = client._transport.app.state.database  # type: ignore[attr-defined]
+    async with database.session_factory() as session:
+        tenant = (await session.execute(select(Tenant).where(Tenant.id == tenant_id))).scalar_one()
+        tenant.status = "suspended"
+        await session.commit()
+
+    accepted = await client.post(
+        "/api/v1/invitations/accept",
+        json={
+            "token": invitation.json()["invite_token"],
+            "password": "suspended-password",
+            "display_name": "停用租户用户",
+        },
+    )
+    assert accepted.status_code == 403
+    assert accepted.json()["detail"]["code"] == "tenant_inactive"
+
+
+@pytest.mark.asyncio
+async def test_multiple_memberships_require_explicit_tenant_selection(client: AsyncClient) -> None:
+    database = client._transport.app.state.database  # type: ignore[attr-defined]
+    async with database.session_factory() as session:
+        operator = (
+            await session.execute(select(User).where(User.email == "operator@example.com"))
+        ).scalar_one()
+        second_tenant = Tenant(name="第二租户", slug="second-membership")
+        session.add(second_tenant)
+        await session.flush()
+        session.add(
+            Membership(
+                tenant_id=second_tenant.id,
+                user_id=operator.id,
+                role="operator",
+                status="active",
+            )
+        )
+        await session.commit()
+
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "operator@example.com", "password": "operator-password"},
+    )
+    assert len(login.json()["tenants"]) == 2
+    response = await client.get("/api/v1/me")
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "tenant_required"

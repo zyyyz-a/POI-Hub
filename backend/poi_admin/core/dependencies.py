@@ -90,26 +90,33 @@ async def get_auth_context(
         ).scalar_one_or_none()
         if membership is None and not user.is_platform_admin:
             raise auth_error("tenant_access_denied", "无权访问该租户", status.HTTP_403_FORBIDDEN)
-        if membership is not None:
+        if membership is not None and not user.is_platform_admin:
             role = (
                 Role(membership.role) if membership.role in {item.value for item in Role} else None
             )
     elif not user.is_platform_admin:
-        membership = (
-            await session.execute(
+        memberships = list(
+            (await session.execute(
                 select(Membership)
                 .where(Membership.user_id == user.id, Membership.status == "active")
                 .options(selectinload(Membership.tenant), selectinload(Membership.user))
                 .order_by(Membership.created_at)
-                .limit(1)
+            )).scalars().all()
+        )
+        if len(memberships) > 1:
+            raise auth_error(
+                "tenant_required",
+                "请先明确选择租户",
+                status.HTTP_400_BAD_REQUEST,
             )
-        ).scalar_one_or_none()
+        membership = memberships[0] if memberships else None
         if membership is not None:
             tenant = membership.tenant
             role = (
                 Role(membership.role) if membership.role in {item.value for item in Role} else None
             )
 
+    await session.commit()
     context = AuthContext(user, auth_session, tenant, membership, role)
     request.state.auth_context = context
     return context

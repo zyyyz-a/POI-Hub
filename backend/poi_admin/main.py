@@ -25,8 +25,13 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
-    application = FastAPI(title="POI Hub", version="0.1.0", lifespan=lifespan)
-    application.state.settings = settings or get_settings()
+    resolved_settings = settings or get_settings()
+    application = FastAPI(
+        title=resolved_settings.app_name,
+        version=resolved_settings.app_version,
+        lifespan=lifespan,
+    )
+    application.state.settings = resolved_settings
     application.include_router(health_router, prefix="/api/v1")
     application.include_router(identity_router, prefix="/api/v1")
     return application

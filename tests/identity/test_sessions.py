@@ -64,3 +64,26 @@ async def test_expired_session_is_rejected(client: AsyncClient) -> None:
 
     response = await client.get("/api/v1/me")
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_authenticated_request_persists_last_seen_timestamp(client: AsyncClient) -> None:
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@example.com", "password": "correct-horse-battery-staple"},
+    )
+    database = client._transport.app.state.database  # type: ignore[attr-defined]
+    old_timestamp = datetime.now(UTC) - timedelta(hours=1)
+    async with database.session_factory() as session:
+        stored = (await session.execute(select(UserSession))).scalars().one()
+        stored.last_seen_at = old_timestamp
+        await session.commit()
+
+    response = await client.get("/api/v1/me", cookies={"poi_session": login.cookies["poi_session"]})
+    assert response.status_code == 200
+    async with database.session_factory() as session:
+        stored = (await session.execute(select(UserSession))).scalars().one()
+        seen_at = stored.last_seen_at
+        if seen_at.tzinfo is None:
+            seen_at = seen_at.replace(tzinfo=UTC)
+        assert seen_at > old_timestamp

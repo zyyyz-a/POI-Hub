@@ -188,6 +188,8 @@ class IdentityService:
             raise IdentityServiceError("invitation_used", "邀请链接已使用", 409)
         if _aware(invitation.expires_at) <= utcnow():
             raise IdentityServiceError("invitation_expired", "邀请链接已过期", 410)
+        if invitation.tenant is None or invitation.tenant.status != "active":
+            raise IdentityServiceError("tenant_inactive", "租户已停用或不存在", 403)
 
         email = normalize_email(invitation.email)
         user = (
