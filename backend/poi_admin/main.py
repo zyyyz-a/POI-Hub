@@ -9,6 +9,7 @@ from .connections.router import connection_router
 from .core.config import Settings, get_settings
 from .core.database import create_database
 from .core.health import health_router
+from .dashboard.router import dashboard_router
 from .identity.router import identity_router
 from .operations.router import operation_router
 from .stores.router import store_router
@@ -36,6 +37,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     application.state.settings = resolved_settings
     application.include_router(health_router, prefix="/api/v1")
+    application.include_router(dashboard_router, prefix="/api/v1")
     application.include_router(identity_router, prefix="/api/v1")
     application.include_router(connection_router, prefix="/api/v1")
     application.include_router(operation_router, prefix="/api/v1")
