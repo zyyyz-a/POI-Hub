@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
 
+from fastapi import Request
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
@@ -85,9 +86,12 @@ async def check_database(database: Database) -> None:
     await database.check_database()
 
 
-async def get_session(database: Database) -> AsyncIterator[AsyncSession]:
-    """Dependency-friendly session generator."""
+async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
+    """FastAPI dependency yielding a session owned by the current app."""
 
+    database = getattr(request.app.state, "database", None)
+    if not isinstance(database, Database):
+        raise RuntimeError("database is not initialized")
     async with database.session_factory() as session:
         yield session
 
