@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class StoreCreateRequest(BaseModel):
@@ -35,6 +35,15 @@ class StoreUpdateRequest(BaseModel):
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
     status: str | None = Field(default=None, pattern="^(active|inactive)$")
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_null_required_fields(cls, value: object) -> object:
+        if isinstance(value, dict):
+            for field in ("code", "name", "address"):
+                if field in value and value[field] is None:
+                    raise ValueError(f"{field} cannot be null")
+        return value
 
 
 class StoreResponse(BaseModel):
@@ -78,12 +87,12 @@ class PoiResponse(BaseModel):
 
 class PoiSyncRequest(BaseModel):
     connection_id: str
+    idempotency_key: str = Field(min_length=1, max_length=255)
 
 
-class PoiSyncResponse(BaseModel):
-    poi_count: int
-    candidate_count: int
-    synchronized_at: datetime
+class PoiSyncAcceptedResponse(BaseModel):
+    operation_id: str
+    status: str
 
 
 class CandidateResponse(BaseModel):
@@ -131,8 +140,8 @@ __all__ = [
     "ManualMappingRequest",
     "MappingResponse",
     "PoiResponse",
+    "PoiSyncAcceptedResponse",
     "PoiSyncRequest",
-    "PoiSyncResponse",
     "StoreCreateRequest",
     "StoreResponse",
     "StoreUpdateRequest",

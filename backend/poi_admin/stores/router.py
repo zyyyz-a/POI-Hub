@@ -7,7 +7,7 @@ from typing import Annotated, cast
 from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from poi_admin.connections.ports import GatewayError, ServicePoiGateway
+from poi_admin.connections.ports import Capability
 from poi_admin.connections.service import ConnectionService
 from poi_admin.core.config import Settings
 from poi_admin.core.database import get_session
@@ -18,15 +18,16 @@ from poi_admin.core.dependencies import (
     require_permission,
 )
 from poi_admin.core.permissions import Permission
+from poi_admin.operations.service import OperationService
 
-from .models import utcnow
+from .operations import POI_SYNC_COMMAND
 from .schemas import (
     CandidateResponse,
     ManualMappingRequest,
     MappingResponse,
     PoiResponse,
+    PoiSyncAcceptedResponse,
     PoiSyncRequest,
-    PoiSyncResponse,
     StoreCreateRequest,
     StoreResponse,
     StoreUpdateRequest,
@@ -48,7 +49,7 @@ def _raise(error: StoreServiceError) -> None:
 
 @store_router.get("/stores", response_model=list[StoreResponse])
 async def list_stores(
-    context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_STORES))],
+    context: Annotated[AuthContext, Depends(require_permission(Permission.VIEW_STORES))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[StoreResponse]:
     stores = await StoreService(session).list_stores(_tenant_id(context))
@@ -77,7 +78,7 @@ async def create_store(
 @store_router.get("/stores/{store_id}", response_model=StoreResponse)
 async def get_store(
     store_id: str,
-    context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_STORES))],
+    context: Annotated[AuthContext, Depends(require_permission(Permission.VIEW_STORES))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> StoreResponse:
     store = await StoreService(session).get_store(_tenant_id(context), store_id)
@@ -122,7 +123,7 @@ async def archive_store(
 
 @store_router.get("/pois", response_model=list[PoiResponse])
 async def list_pois(
-    context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_STORES))],
+    context: Annotated[AuthContext, Depends(require_permission(Permission.VIEW_STORES))],
     session: Annotated[AsyncSession, Depends(get_session)],
     connection_id: str | None = None,
 ) -> list[PoiResponse]:
@@ -130,14 +131,18 @@ async def list_pois(
     return [PoiResponse.model_validate(item) for item in pois]
 
 
-@store_router.post("/pois/sync", response_model=PoiSyncResponse)
+@store_router.post(
+    "/pois/sync",
+    response_model=PoiSyncAcceptedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def sync_pois(
     payload: PoiSyncRequest,
     request: Request,
     context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_MAPPINGS))],
     csrf_context: Annotated[AuthContext, Depends(require_csrf)],
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> PoiSyncResponse:
+) -> PoiSyncAcceptedResponse:
     del csrf_context
     tenant_id = _tenant_id(context)
     connection_service = ConnectionService(
@@ -146,29 +151,21 @@ async def sync_pois(
     connection = await connection_service.get(tenant_id, payload.connection_id)
     if connection is None:
         raise auth_error("connection_not_found", "连接不存在", 404)
-    try:
-        gateway = cast(
-            ServicePoiGateway, await connection_service.gateway(tenant_id, connection.id)
-        )
-        service = StoreService(session)
-        pois = await service.sync_pois(
-            tenant_id, connection, actor_user_id=context.user.id, gateway=gateway
-        )
-        candidates = await service.generate_candidates(tenant_id, connection.id)
-    except StoreServiceError as error:
-        _raise(error)
-    except GatewayError as error:
-        raise auth_error(
-            error.code, str(error), 503 if error.retryable else 422
-        ) from error
-    return PoiSyncResponse(
-        poi_count=len(pois), candidate_count=len(candidates), synchronized_at=utcnow()
+    if connection.capability != Capability.SERVICE_POI.value:
+        raise auth_error("invalid_connection", "连接不支持服务商 POI", 422)
+    operation = await OperationService(session).enqueue(
+        tenant_id,
+        POI_SYNC_COMMAND,
+        payload.idempotency_key,
+        {"actor_user_id": context.user.id},
+        connection_id=connection.id,
     )
+    return PoiSyncAcceptedResponse(operation_id=operation.id, status=operation.status)
 
 
 @store_router.get("/match-candidates", response_model=list[CandidateResponse])
 async def list_candidates(
-    context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_MAPPINGS))],
+    context: Annotated[AuthContext, Depends(require_permission(Permission.VIEW_MAPPINGS))],
     session: Annotated[AsyncSession, Depends(get_session)],
     include_dismissed: bool = False,
 ) -> list[CandidateResponse]:
@@ -220,7 +217,7 @@ async def dismiss_candidate(
 
 @store_router.get("/store-poi-mappings", response_model=list[MappingResponse])
 async def list_mappings(
-    context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_MAPPINGS))],
+    context: Annotated[AuthContext, Depends(require_permission(Permission.VIEW_MAPPINGS))],
     session: Annotated[AsyncSession, Depends(get_session)],
     include_history: bool = False,
 ) -> list[MappingResponse]:

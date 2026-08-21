@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any
+from typing import Any, cast
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -143,17 +144,37 @@ class StoreService:
             "longitude",
             "status",
         }
-        for field, value in changes.items():
-            if field in allowed:
-                setattr(store, field, value.strip() if isinstance(value, str) else value)
+        values = {
+            field: value.strip() if isinstance(value, str) else value
+            for field, value in changes.items()
+            if field in allowed
+        }
         if "contact_phone" in changes:
-            store.contact_phone_masked = mask_phone(changes["contact_phone"])
-        store.version += 1
+            values["contact_phone_masked"] = mask_phone(changes["contact_phone"])
+        values["version"] = version + 1
         try:
+            result = cast(
+                CursorResult[Any],
+                await self.session.execute(
+                    update(Store)
+                    .where(
+                        Store.tenant_id == tenant_id,
+                        Store.id == store_id,
+                        Store.version == version,
+                    )
+                    .values(**values)
+                    .execution_options(synchronize_session=False)
+                )
+            )
+            if result.rowcount != 1:
+                await self.session.rollback()
+                raise StoreServiceError("version_conflict", "门店已被其他操作更新", 409)
             await self.session.commit()
         except IntegrityError as error:
             await self.session.rollback()
-            raise StoreServiceError("store_code_exists", "门店编码已存在", 409) from error
+            if "code" in changes:
+                raise StoreServiceError("store_code_exists", "门店编码已存在", 409) from error
+            raise StoreServiceError("store_update_invalid", "门店更新无效", 422) from error
         await self.session.refresh(store)
         return store
 

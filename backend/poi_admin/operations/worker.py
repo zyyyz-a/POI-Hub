@@ -7,6 +7,8 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from poi_admin.core.config import Settings
+
 from .models import IntegrationOperation
 from .service import OperationService, classify_error
 
@@ -19,11 +21,18 @@ class OperationWorker:
         session: AsyncSession,
         *,
         worker_id: str = "worker-1",
+        settings: Settings | None = None,
         handlers: dict[str, Handler] | None = None,
     ) -> None:
         self.session = session
         self.worker_id = worker_id
-        self.handlers = handlers or {}
+        if handlers is None:
+            if settings is None:
+                raise ValueError("settings are required for application operation handlers")
+            from poi_admin.stores.operations import store_operation_handlers
+
+            handlers = store_operation_handlers(session, settings)
+        self.handlers = handlers
 
     async def run_once(self) -> IntegrationOperation | None:
         service = OperationService(self.session)

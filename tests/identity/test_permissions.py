@@ -20,6 +20,8 @@ def test_fixed_roles_have_least_privilege_permissions() -> None:
     assert has_permission(Role.OPERATOR, Permission.MANAGE_STORES)
     assert has_permission(Role.VERIFIER, Permission.CONSUME_VOUCHERS)
     assert has_permission(Role.AUDITOR, Permission.VIEW_AUDIT)
+    assert has_permission(Role.AUDITOR, Permission.VIEW_STORES)
+    assert has_permission(Role.AUDITOR, Permission.VIEW_MAPPINGS)
     assert not has_permission(Role.OPERATOR, Permission.MANAGE_MEMBERS)
     assert not has_permission(Role.VERIFIER, Permission.MANAGE_PRODUCTS)
     assert not has_permission(Role.AUDITOR, Permission.CONSUME_VOUCHERS)
