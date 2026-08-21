@@ -5,6 +5,8 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from poi_admin.core.config import Settings
+from poi_admin.core.orm import Base
+from poi_admin.identity.service import ensure_test_identity
 from poi_admin.main import create_app
 
 
@@ -23,6 +25,10 @@ def test_settings(tmp_path) -> Settings:
 async def client(test_settings: Settings) -> AsyncIterator[AsyncClient]:
     application = create_app(test_settings)
     async with application.router.lifespan_context(application):
+        async with application.state.database.engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        async with application.state.database.session_factory() as session:
+            await ensure_test_identity(session)
         transport = ASGITransport(app=application)
         async with AsyncClient(transport=transport, base_url="http://test") as http_client:
             yield http_client

@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from .core.config import Settings, get_settings
 from .core.database import create_database
 from .core.health import health_router
+from .identity.router import identity_router
 
 
 @asynccontextmanager
@@ -27,6 +28,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application = FastAPI(title="POI Hub", version="0.1.0", lifespan=lifespan)
     application.state.settings = settings or get_settings()
     application.include_router(health_router, prefix="/api/v1")
+    application.include_router(identity_router, prefix="/api/v1")
     return application
 
 
