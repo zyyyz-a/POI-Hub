@@ -16,10 +16,12 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "backend"))
 
+from poi_admin.connections import models as connection_models  # noqa: E402, F401
 from poi_admin.core.config import get_settings  # noqa: E402
 from poi_admin.core.database import ensure_database_directory  # noqa: E402
 from poi_admin.core.orm import Base  # noqa: E402
 from poi_admin.identity import models as identity_models  # noqa: E402, F401
+from poi_admin.operations import models as operation_models  # noqa: E402, F401
 
 config = context.config
 

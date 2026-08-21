@@ -27,6 +27,7 @@ class Permission(StrEnum):
     MANAGE_AFTER_SALES = "manage_after_sales"
     VIEW_ACCOUNTING = "view_accounting"
     VIEW_OPERATIONS = "view_operations"
+    MANAGE_OPERATIONS = "manage_operations"
     VIEW_AUDIT = "view_audit"
 
 
@@ -44,6 +45,7 @@ _TENANT_ADMIN_PERMISSIONS = frozenset(
         Permission.MANAGE_AFTER_SALES,
         Permission.VIEW_ACCOUNTING,
         Permission.VIEW_OPERATIONS,
+        Permission.MANAGE_OPERATIONS,
         Permission.VIEW_AUDIT,
     }
 )
@@ -60,9 +62,15 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.MANAGE_ORDERS,
             Permission.VIEW_ACCOUNTING,
             Permission.VIEW_OPERATIONS,
+            Permission.MANAGE_OPERATIONS,
         }
     ),
-    Role.VERIFIER: frozenset({Permission.CONSUME_VOUCHERS, Permission.VIEW_OPERATIONS}),
+    Role.VERIFIER: frozenset(
+        {
+            Permission.CONSUME_VOUCHERS,
+            Permission.VIEW_OPERATIONS,
+        }
+    ),
     Role.AUDITOR: frozenset(
         {
             Permission.VIEW_ACCOUNTING,

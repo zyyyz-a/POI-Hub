@@ -23,6 +23,9 @@ def test_fixed_roles_have_least_privilege_permissions() -> None:
     assert not has_permission(Role.OPERATOR, Permission.MANAGE_MEMBERS)
     assert not has_permission(Role.VERIFIER, Permission.MANAGE_PRODUCTS)
     assert not has_permission(Role.AUDITOR, Permission.CONSUME_VOUCHERS)
+    assert has_permission(Role.OPERATOR, Permission.MANAGE_OPERATIONS)
+    assert not has_permission(Role.VERIFIER, Permission.MANAGE_OPERATIONS)
+    assert not has_permission(Role.AUDITOR, Permission.MANAGE_OPERATIONS)
 
 
 @pytest.mark.asyncio
