@@ -11,6 +11,7 @@ from .core.database import create_database
 from .core.health import health_router
 from .identity.router import identity_router
 from .operations.router import operation_router
+from .stores.router import store_router
 
 
 @asynccontextmanager
@@ -38,6 +39,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(identity_router, prefix="/api/v1")
     application.include_router(connection_router, prefix="/api/v1")
     application.include_router(operation_router, prefix="/api/v1")
+    application.include_router(store_router, prefix="/api/v1")
     return application
 
 
