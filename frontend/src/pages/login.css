@@ -1,0 +1,14 @@
+.login-page { display: grid; min-height: 100vh; grid-template-columns: minmax(360px, 480px) 1fr; background: #f4f7fb; }
+.login-panel { display: flex; flex-direction: column; justify-content: center; width: min(100%, 390px); margin: auto; padding: 32px 24px; }
+.login-brand { margin-bottom: 60px; color: #102a43; }
+.login-panel .brand-mark { color: #fff; background: #102a43; }
+.login-panel h1 { margin: 0 0 4px; color: #102a43; font-size: 29px; }
+.login-subtitle { margin-bottom: 28px !important; color: #627d98; }
+.login-alert { margin-bottom: 18px; }
+.login-note { margin-top: 22px; color: #829ab1; font-size: 12px; text-align: center; }
+.login-aside { display: flex; flex-direction: column; justify-content: center; padding: 10vw; color: #d9e2ec; background: #102a43; }
+.aside-kicker { color: #7dd3c7; font-size: 12px; font-weight: 700; letter-spacing: .16em; }
+.login-aside h2 { margin: 22px 0 16px; color: #fff; font-size: clamp(28px, 3.5vw, 52px); line-height: 1.2; }
+.login-aside p { max-width: 360px; margin: 0; color: #9fb3c8; line-height: 1.8; }
+.aside-rule { width: 58px; height: 3px; margin-top: 52px; background: #7dd3c7; }
+@media (max-width: 720px) { .login-page { display: block; } .login-panel { min-height: 100vh; } .login-aside { display: none; } .login-brand { margin-bottom: 44px; } }
