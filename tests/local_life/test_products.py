@@ -12,7 +12,8 @@ from poi_admin.core.security import hash_password
 from poi_admin.identity.models import Membership, Tenant, User
 from poi_admin.local_life.models import LocalProduct
 from poi_admin.local_life.products import ProductService
-from poi_admin.local_life.schemas import ProductCreateRequest
+from poi_admin.local_life.schemas import ProductCreateRequest, ProductUpdateRequest
+from poi_admin.operations.models import IntegrationOperation, OperationStatus
 from poi_admin.operations.worker import OperationWorker
 
 
@@ -59,6 +60,16 @@ def test_product_request_rejects_invalid_prices_and_blank_names() -> None:
     with pytest.raises(ValidationError):
         ProductCreateRequest.model_validate(payload)
 
+
+def test_product_update_requires_at_least_one_valid_change() -> None:
+    with pytest.raises(ValidationError):
+        ProductUpdateRequest(version=1, idempotency_key="empty-update")
+    with pytest.raises(ValidationError):
+        ProductUpdateRequest(
+            version=1,
+            idempotency_key="blank-name-update",
+            name="   ",
+        )
 
 @pytest.mark.asyncio
 async def test_create_is_tenant_scoped_and_idempotent(client: AsyncClient) -> None:
@@ -238,10 +249,117 @@ async def test_auditor_can_read_products_but_cannot_mutate(client: AsyncClient) 
         },
         json=valid_product_payload(),
     )
+    denied_action = await client.post(
+        "/api/v1/local-life/products/missing/actions/delete",
+        headers={
+            "X-Tenant-ID": tenant_id,
+            "X-CSRF-Token": login.json()["csrf_token"],
+        },
+        json={"idempotency_key": "auditor-delete-denied"},
+    )
+    denied_stock = await client.put(
+        "/api/v1/local-life/skus/missing/stock",
+        headers={
+            "X-Tenant-ID": tenant_id,
+            "X-CSRF-Token": login.json()["csrf_token"],
+        },
+        json={"stock": 1, "version": 1, "idempotency_key": "auditor-stock-denied"},
+    )
 
     assert read.status_code == 200
     assert read.json() == []
     assert denied.status_code == 403
+    assert denied_action.status_code == 403
+    assert denied_stock.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_product_update_routes_are_durable_tenant_scoped_and_csrf_protected(
+    client: AsyncClient,
+) -> None:
+    from .test_inventory import _seed_remote_product
+
+    tenant_id, product_id, _ = await _seed_remote_product(client)
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "operator@example.com", "password": "operator-password"},
+    )
+    csrf = login.json()["csrf_token"]
+    update_payload = {
+        "version": 1,
+        "idempotency_key": "api-product-update-v1",
+        "name": "API 更新商品",
+    }
+
+    missing_csrf = await client.patch(
+        f"/api/v1/local-life/products/{product_id}",
+        headers={"X-Tenant-ID": tenant_id},
+        json=update_payload,
+    )
+    accepted = await client.patch(
+        f"/api/v1/local-life/products/{product_id}",
+        headers={"X-Tenant-ID": tenant_id, "X-CSRF-Token": csrf},
+        json=update_payload,
+    )
+    duplicate = await client.patch(
+        f"/api/v1/local-life/products/{product_id}",
+        headers={"X-Tenant-ID": tenant_id, "X-CSRF-Token": csrf},
+        json=update_payload,
+    )
+
+    assert missing_csrf.status_code == 403
+    assert accepted.status_code == 202
+    assert duplicate.status_code == 202
+    assert duplicate.json()["operation_id"] == accepted.json()["operation_id"]
+    assert accepted.json()["product"]["name"] == "API 更新商品"
+    assert accepted.json()["product"]["version"] == 2
+    assert accepted.json()["product"]["desired_state"] == "under_review"
+
+    database = client._transport.app.state.database  # type: ignore[attr-defined]
+    async with database.session_factory() as session:
+        operation = await session.get(
+            IntegrationOperation, accepted.json()["operation_id"]
+        )
+        assert operation is not None
+        operation.status = OperationStatus.SUCCEEDED.value
+        product = await ProductService(session).get_product(tenant_id, product_id)
+        assert product is not None
+        product.remote_status = "approved"
+        product.desired_state = "approved"
+        other = Tenant(name="更新隔离租户", slug="product-update-other")
+        session.add(other)
+        await session.commit()
+        with pytest.raises(Exception) as isolated:
+            await ProductService(session).update_product(
+                other.id,
+                product_id,
+                ProductUpdateRequest(
+                    version=2,
+                    idempotency_key="cross-tenant-update",
+                    name="越权更新",
+                ),
+                audit_free=False,
+            )
+        assert getattr(isolated.value, "code", None) == "product_not_found"
+
+    missing_action_csrf = await client.post(
+        f"/api/v1/local-life/products/{product_id}/actions/delete",
+        headers={"X-Tenant-ID": tenant_id},
+        json={"idempotency_key": "action-without-csrf"},
+    )
+    audit_free = await client.patch(
+        f"/api/v1/local-life/products/{product_id}/audit-free",
+        headers={"X-Tenant-ID": tenant_id, "X-CSRF-Token": csrf},
+        json={
+            "version": 2,
+            "idempotency_key": "api-audit-free-v2",
+            "available_store_desc": "API 更新门店范围",
+        },
+    )
+
+    assert missing_action_csrf.status_code == 403
+    assert audit_free.status_code == 202
+    assert audit_free.json()["product"]["available_store_desc"] == "API 更新门店范围"
 
 
 @pytest.mark.asyncio

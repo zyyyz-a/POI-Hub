@@ -18,14 +18,21 @@ from poi_admin.connections.ports import (
 )
 from poi_admin.connections.service import ConnectionService
 from poi_admin.core.config import Settings
-from poi_admin.operations.models import IntegrationOperation
+from poi_admin.operations.models import IntegrationOperation, OperationStatus
 from poi_admin.operations.service import OperationService
 from poi_admin.operations.worker import Handler, OperationWorker
 
 from .models import LocalProduct, LocalSku, ProductStatus, utcnow
-from .schemas import ProductAction, ProductCreateRequest, StockUpdateRequest
+from .schemas import (
+    ProductAction,
+    ProductCreateRequest,
+    ProductUpdateRequest,
+    StockUpdateRequest,
+)
 
 CREATE_PRODUCT_COMMAND = "local_life.product.create"
+UPDATE_PRODUCT_COMMAND = "local_life.product.update"
+AUDIT_FREE_UPDATE_PRODUCT_COMMAND = "local_life.product.audit_free_update"
 SET_STOCK_COMMAND = "local_life.inventory.set"
 ACTION_COMMANDS = {
     ProductAction.CANCEL_AUDIT: "local_life.product.cancel_audit",
@@ -49,6 +56,20 @@ _ACTION_ALLOWED_FROM = {
         {ProductStatus.DRAFT, ProductStatus.APPROVED, ProductStatus.DELISTED}
     ),
 }
+
+_REGULAR_UPDATE_ALLOWED_FROM = frozenset(
+    {ProductStatus.DRAFT, ProductStatus.APPROVED, ProductStatus.DELISTED}
+)
+_AUDIT_FREE_UPDATE_ALLOWED_FROM = frozenset(
+    {ProductStatus.APPROVED, ProductStatus.LISTED, ProductStatus.DELISTED}
+)
+_ACTIVE_OPERATION_STATUSES = frozenset(
+    {
+        OperationStatus.QUEUED.value,
+        OperationStatus.RUNNING.value,
+        OperationStatus.RETRY_WAIT.value,
+    }
+)
 
 
 class ProductServiceError(Exception):
@@ -174,6 +195,69 @@ class ProductService:
             ) from error
         return product, operation
 
+    async def update_product(
+        self,
+        tenant_id: str,
+        product_id: str,
+        request: ProductUpdateRequest,
+        *,
+        audit_free: bool,
+    ) -> tuple[LocalProduct, IntegrationOperation]:
+        command = (
+            AUDIT_FREE_UPDATE_PRODUCT_COMMAND
+            if audit_free
+            else UPDATE_PRODUCT_COMMAND
+        )
+        operation_service = OperationService(self.session)
+        existing = await operation_service.get_by_idempotency_key(
+            tenant_id, request.idempotency_key
+        )
+        if existing is not None:
+            return await self._existing_product_operation(
+                tenant_id, existing, command, expected_product_id=product_id
+            )
+
+        product = await self.get_product(tenant_id, product_id)
+        if product is None:
+            raise ProductServiceError("product_not_found", "商品不存在", 404)
+        if product.external_product_id is None:
+            raise ProductServiceError("product_not_ready", "商品尚未创建到微信", 409)
+        await self._require_no_pending_product_operation(tenant_id, product)
+        current = self._settled_product_status(product)
+        allowed = (
+            _AUDIT_FREE_UPDATE_ALLOWED_FROM
+            if audit_free
+            else _REGULAR_UPDATE_ALLOWED_FROM
+        )
+        if current not in allowed:
+            raise ProductServiceError(
+                "invalid_product_transition",
+                f"商品状态 {current.value} 不能执行更新",
+                409,
+            )
+        if product.version != request.version:
+            raise ProductServiceError("version_conflict", "商品已被其他操作更新", 409)
+
+        for field, value in request.changes().items():
+            setattr(product, field, value)
+        target = current if audit_free else ProductStatus.UNDER_REVIEW
+        product.desired_state = target.value
+        product.version += 1
+        operation = await operation_service.enqueue(
+            tenant_id,
+            command,
+            request.idempotency_key,
+            {
+                "product_id": product.id,
+                "source_status": current.value,
+                "target_status": target.value,
+                "target_version": product.version,
+            },
+            connection_id=product.connection_id,
+            resource_ref=f"local_product:{product.id}",
+        )
+        return product, operation
+
     async def update_stock(
         self, tenant_id: str, sku_id: str, request: StockUpdateRequest
     ) -> tuple[LocalSku, IntegrationOperation]:
@@ -257,7 +341,8 @@ class ProductService:
             raise ProductServiceError("product_not_found", "商品不存在", 404)
         if product.external_product_id is None:
             raise ProductServiceError("product_not_ready", "商品尚未创建到微信", 409)
-        current = ProductStatus(product.remote_status)
+        await self._require_no_pending_product_operation(tenant_id, product)
+        current = self._settled_product_status(product)
         if current not in _ACTION_ALLOWED_FROM[resolved_action]:
             raise ProductServiceError(
                 "invalid_product_transition",
@@ -271,7 +356,12 @@ class ProductService:
             tenant_id,
             command,
             idempotency_key,
-            {"product_id": product.id},
+            {
+                "product_id": product.id,
+                "source_status": current.value,
+                "target_status": _ACTION_TARGETS[resolved_action].value,
+                "target_version": product.version,
+            },
             connection_id=product.connection_id,
             resource_ref=f"local_product:{product.id}",
         )
@@ -285,14 +375,55 @@ class ProductService:
         )
         return await worker.run_once()
 
+    async def _require_no_pending_product_operation(
+        self, tenant_id: str, product: LocalProduct
+    ) -> None:
+        pending = (
+            await self.session.execute(
+                select(IntegrationOperation)
+                .where(
+                    IntegrationOperation.tenant_id == tenant_id,
+                    IntegrationOperation.resource_ref == f"local_product:{product.id}",
+                    IntegrationOperation.status.in_(_ACTIVE_OPERATION_STATUSES),
+                )
+                .order_by(IntegrationOperation.created_at)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if pending is not None:
+            raise ProductServiceError(
+                "product_operation_pending", "商品已有待处理操作", 409
+            )
+
+    @staticmethod
+    def _settled_product_status(product: LocalProduct) -> ProductStatus:
+        try:
+            remote_status = ProductStatus(product.remote_status)
+            desired_status = ProductStatus(product.desired_state)
+        except ValueError as error:
+            raise ProductServiceError(
+                "invalid_product_status", "商品状态无效", 409
+            ) from error
+        if desired_status != remote_status:
+            raise ProductServiceError(
+                "product_state_pending", "商品目标状态尚未完成", 409
+            )
+        return remote_status
+
     async def _existing_product_operation(
         self,
         tenant_id: str,
         operation: IntegrationOperation,
         expected_command: str,
+        *,
+        expected_product_id: str | None = None,
     ) -> tuple[LocalProduct, IntegrationOperation]:
         product_id = operation.payload.get("product_id")
-        if operation.command_type != expected_command or not isinstance(product_id, str):
+        if (
+            operation.command_type != expected_command
+            or not isinstance(product_id, str)
+            or (expected_product_id is not None and product_id != expected_product_id)
+        ):
             raise ProductServiceError(
                 "idempotency_key_conflict", "幂等键已用于其他操作", 409
             )
@@ -385,6 +516,41 @@ def product_operation_handlers(
             LocalLifeGateway,
             await connection_service.gateway(operation.tenant_id, connection.id),
         )
+
+    def validate_intent(
+        product: LocalProduct, operation: IntegrationOperation
+    ) -> tuple[ProductStatus, ProductStatus, ProductStatus]:
+        source_value = operation.payload.get("source_status")
+        target_value = operation.payload.get("target_status")
+        target_version = operation.payload.get("target_version")
+        if (
+            not isinstance(source_value, str)
+            or not isinstance(target_value, str)
+            or not isinstance(target_version, int)
+        ):
+            raise GatewayTerminalError(
+                "product operation intent is invalid", code="invalid_operation_payload"
+            )
+        try:
+            source = ProductStatus(source_value)
+            target = ProductStatus(target_value)
+            current = ProductStatus(product.remote_status)
+            desired = ProductStatus(product.desired_state)
+        except ValueError as error:
+            raise GatewayTerminalError(
+                "product operation status is invalid", code="invalid_product_status"
+            ) from error
+        if product.version != target_version or desired != target:
+            raise GatewayTerminalError(
+                "product intent changed after operation was queued",
+                code="product_intent_changed",
+            )
+        if current not in {source, target}:
+            raise GatewayTerminalError(
+                "product state changed after operation was queued",
+                code="invalid_product_transition",
+            )
+        return source, target, current
 
     async def create_product(operation: IntegrationOperation) -> dict[str, Any]:
         product = await product_for(operation)
@@ -491,6 +657,37 @@ def product_operation_handlers(
         await session.commit()
         return {"sku_id": sku.id, "stock": sku.stock, "superseded": False}
 
+    async def apply_update(operation: IntegrationOperation) -> dict[str, Any]:
+        product = await product_for(operation)
+        _, target, current = validate_intent(product, operation)
+        audit_free = operation.command_type == AUDIT_FREE_UPDATE_PRODUCT_COMMAND
+        if not audit_free and current == target:
+            return {"product_id": product.id, "remote_status": target.value}
+        if product.external_product_id is None:
+            raise GatewayTerminalError(
+                "remote product identifier is missing", code="product_not_ready"
+            )
+        gateway = await gateway_for(operation, product)
+        if audit_free:
+            result = await gateway.audit_free_update_product(
+                product.external_product_id, _product_payload(product)
+            )
+        else:
+            result = await gateway.update_product(
+                product.external_product_id, _product_payload(product)
+            )
+        result_status = _status(result)
+        if result_status != target:
+            raise GatewayTerminalError(
+                "remote product did not reach the requested status",
+                code="invalid_product_transition",
+            )
+        product.remote_status = result_status.value
+        product.desired_state = result_status.value
+        product.last_synced_at = utcnow()
+        await session.commit()
+        return {"product_id": product.id, "remote_status": product.remote_status}
+
     async def apply_action(operation: IntegrationOperation) -> dict[str, Any]:
         product = await product_for(operation)
         action = next(
@@ -505,8 +702,12 @@ def product_operation_handlers(
             raise GatewayTerminalError(
                 "product action is invalid", code="invalid_product_action"
             )
-        target = _ACTION_TARGETS[action]
-        if product.remote_status == target.value:
+        _, target, current = validate_intent(product, operation)
+        if target != _ACTION_TARGETS[action]:
+            raise GatewayTerminalError(
+                "product action target is invalid", code="invalid_operation_payload"
+            )
+        if current == target:
             return {"product_id": product.id, "remote_status": target.value}
         if product.external_product_id is None:
             raise GatewayTerminalError(
@@ -515,16 +716,26 @@ def product_operation_handlers(
         gateway = await gateway_for(operation, product)
         if action == ProductAction.CANCEL_AUDIT:
             result = await gateway.cancel_product_audit(product.external_product_id)
-            product.remote_status = _status(result).value
         elif action == ProductAction.LIST:
             result = await gateway.list_product(product.external_product_id)
-            product.remote_status = _status(result).value
         elif action == ProductAction.DELIST:
             result = await gateway.delist_product(product.external_product_id)
-            product.remote_status = _status(result).value
         else:
-            await gateway.delete_product(product.external_product_id)
+            try:
+                await gateway.delete_product(product.external_product_id)
+            except GatewayTerminalError as error:
+                if error.code != "product_not_found":
+                    raise
             product.remote_status = ProductStatus.DELETED.value
+            result = None
+        if result is not None:
+            result_status = _status(result)
+            if result_status != target:
+                raise GatewayTerminalError(
+                    "remote product did not reach the requested status",
+                    code="invalid_product_transition",
+                )
+            product.remote_status = result_status.value
         product.desired_state = product.remote_status
         product.last_synced_at = utcnow()
         await session.commit()
@@ -532,6 +743,8 @@ def product_operation_handlers(
 
     handlers: dict[str, Handler] = {
         CREATE_PRODUCT_COMMAND: create_product,
+        UPDATE_PRODUCT_COMMAND: apply_update,
+        AUDIT_FREE_UPDATE_PRODUCT_COMMAND: apply_update,
         SET_STOCK_COMMAND: set_stock,
     }
     handlers.update({command: apply_action for command in ACTION_COMMANDS.values()})

@@ -106,6 +106,88 @@ class StockUpdateRequest(BaseModel):
         return stripped
 
 
+class ProductUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=1)
+    idempotency_key: str = Field(min_length=1, max_length=255)
+    name: str | None = Field(default=None, max_length=200)
+    category: str | None = Field(default=None, max_length=160)
+    brand: str | None = Field(default=None, max_length=160)
+    head_images: list[str] | None = None
+    available_store_desc: str | None = Field(default=None, max_length=1000)
+    verification_settings: dict[str, Any] | None = None
+    code_source: Literal["wechat", "merchant"] | None = None
+    rules: dict[str, Any] | None = None
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def strip_idempotency_key(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("idempotency_key cannot be blank")
+        return stripped
+
+    @field_validator("name")
+    @classmethod
+    def strip_name(cls, value: str | None) -> str | None:
+        if value is None:
+            raise ValueError("name cannot be null")
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("name cannot be blank")
+        return stripped
+
+    @field_validator("category", "brand", "available_store_desc")
+    @classmethod
+    def strip_optional(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+    @field_validator("head_images")
+    @classmethod
+    def validate_images(cls, values: list[str] | None) -> list[str] | None:
+        if values is None:
+            raise ValueError("head_images cannot be null")
+        if not 1 <= len(values) <= 9:
+            raise ValueError("head_images must contain between 1 and 9 items")
+        normalized: list[str] = []
+        for value in values:
+            stripped = value.strip()
+            if not stripped.startswith(("https://", "http://")):
+                raise ValueError("head image must be an HTTP URL")
+            normalized.append(stripped)
+        return normalized
+
+    @model_validator(mode="after")
+    def require_change(self) -> Self:
+        editable_fields = {
+            "name",
+            "category",
+            "brand",
+            "head_images",
+            "available_store_desc",
+            "verification_settings",
+            "code_source",
+            "rules",
+        }
+        if not self.model_fields_set.intersection(editable_fields):
+            raise ValueError("at least one product field must be changed")
+        if "verification_settings" in self.model_fields_set and self.verification_settings is None:
+            raise ValueError("verification_settings cannot be null")
+        if "rules" in self.model_fields_set and self.rules is None:
+            raise ValueError("rules cannot be null")
+        return self
+
+    def changes(self) -> dict[str, Any]:
+        return self.model_dump(
+            exclude={"version", "idempotency_key"},
+            exclude_unset=True,
+        )
+
+
 class ProductActionRequest(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=255)
 
@@ -182,6 +264,7 @@ __all__ = [
     "ProductActionRequest",
     "ProductCreateRequest",
     "ProductResponse",
+    "ProductUpdateRequest",
     "SkuCreateRequest",
     "SkuResponse",
     "StockAcceptedResponse",

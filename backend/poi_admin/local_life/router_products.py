@@ -19,6 +19,7 @@ from .schemas import (
     ProductActionRequest,
     ProductCreateRequest,
     ProductResponse,
+    ProductUpdateRequest,
     SkuResponse,
     StockAcceptedResponse,
     StockUpdateRequest,
@@ -86,6 +87,67 @@ async def create_product(
         operation_id=operation.id,
         status=OperationStatus(operation.status),
         product=ProductResponse.model_validate(product),
+    )
+
+
+async def _update_product(
+    product_id: str,
+    payload: ProductUpdateRequest,
+    *,
+    audit_free: bool,
+    context: AuthContext,
+    session: AsyncSession,
+) -> ProductAcceptedResponse:
+    try:
+        product, operation = await ProductService(session).update_product(
+            _tenant_id(context), product_id, payload, audit_free=audit_free
+        )
+    except ProductServiceError as error:
+        _raise(error)
+    return ProductAcceptedResponse(
+        operation_id=operation.id,
+        status=OperationStatus(operation.status),
+        product=ProductResponse.model_validate(product),
+    )
+
+
+@product_router.patch(
+    "/products/{product_id}",
+    response_model=ProductAcceptedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def update_product(
+    product_id: str,
+    payload: ProductUpdateRequest,
+    context: Annotated[
+        AuthContext, Depends(require_permission(Permission.MANAGE_PRODUCTS))
+    ],
+    csrf_context: Annotated[AuthContext, Depends(require_csrf)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ProductAcceptedResponse:
+    del csrf_context
+    return await _update_product(
+        product_id, payload, audit_free=False, context=context, session=session
+    )
+
+
+@product_router.patch(
+    "/products/{product_id}/audit-free",
+    response_model=ProductAcceptedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def audit_free_update_product(
+    product_id: str,
+    payload: ProductUpdateRequest,
+    context: Annotated[
+        AuthContext, Depends(require_permission(Permission.MANAGE_PRODUCTS))
+    ],
+    csrf_context: Annotated[AuthContext, Depends(require_csrf)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ProductAcceptedResponse:
+    del csrf_context
+    return await _update_product(
+        product_id, payload, audit_free=True, context=context, session=session
     )
 
 
