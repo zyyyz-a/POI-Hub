@@ -99,9 +99,7 @@ class ProductService:
             .all()
         )
 
-    async def get_product(
-        self, tenant_id: str, product_id: str
-    ) -> LocalProduct | None:
+    async def get_product(self, tenant_id: str, product_id: str) -> LocalProduct | None:
         return (
             await self.session.execute(
                 select(LocalProduct)
@@ -145,9 +143,7 @@ class ProductService:
         if connection is None:
             raise ProductServiceError("connection_not_found", "连接不存在", 404)
         if connection.capability != Capability.LOCAL_LIFE.value:
-            raise ProductServiceError(
-                "invalid_connection", "连接不支持微信团购商品", 422
-            )
+            raise ProductServiceError("invalid_connection", "连接不支持微信团购商品", 422)
 
         product = LocalProduct(
             tenant_id=tenant_id,
@@ -203,11 +199,7 @@ class ProductService:
         *,
         audit_free: bool,
     ) -> tuple[LocalProduct, IntegrationOperation]:
-        command = (
-            AUDIT_FREE_UPDATE_PRODUCT_COMMAND
-            if audit_free
-            else UPDATE_PRODUCT_COMMAND
-        )
+        command = AUDIT_FREE_UPDATE_PRODUCT_COMMAND if audit_free else UPDATE_PRODUCT_COMMAND
         operation_service = OperationService(self.session)
         existing = await operation_service.get_by_idempotency_key(
             tenant_id, request.idempotency_key
@@ -224,11 +216,7 @@ class ProductService:
             raise ProductServiceError("product_not_ready", "商品尚未创建到微信", 409)
         await self._require_no_pending_product_operation(tenant_id, product)
         current = self._settled_product_status(product)
-        allowed = (
-            _AUDIT_FREE_UPDATE_ALLOWED_FROM
-            if audit_free
-            else _REGULAR_UPDATE_ALLOWED_FROM
-        )
+        allowed = _AUDIT_FREE_UPDATE_ALLOWED_FROM if audit_free else _REGULAR_UPDATE_ALLOWED_FROM
         if current not in allowed:
             raise ProductServiceError(
                 "invalid_product_transition",
@@ -270,9 +258,7 @@ class ProductService:
                 existing.command_type != SET_STOCK_COMMAND
                 or existing.payload.get("sku_id") != sku_id
             ):
-                raise ProductServiceError(
-                    "idempotency_key_conflict", "幂等键已用于其他操作", 409
-                )
+                raise ProductServiceError("idempotency_key_conflict", "幂等键已用于其他操作", 409)
             existing_sku = await self.get_sku(tenant_id, sku_id)
             if existing_sku is None:
                 raise ProductServiceError("sku_not_found", "SKU 不存在", 404)
@@ -282,13 +268,9 @@ class ProductService:
         if sku is None:
             raise ProductServiceError("sku_not_found", "SKU 不存在", 404)
         if sku.product.external_product_id is None or sku.external_sku_id is None:
-            raise ProductServiceError(
-                "product_not_ready", "商品尚未取得微信商品与 SKU 编号", 409
-            )
+            raise ProductServiceError("product_not_ready", "商品尚未取得微信商品与 SKU 编号", 409)
         if sku.product.remote_status == ProductStatus.DELETED.value:
-            raise ProductServiceError(
-                "invalid_product_transition", "已删除商品不能更新库存", 409
-            )
+            raise ProductServiceError("invalid_product_transition", "已删除商品不能更新库存", 409)
         if sku.version != request.version:
             raise ProductServiceError("version_conflict", "库存已被其他操作更新", 409)
 
@@ -323,17 +305,10 @@ class ProductService:
 
         command = ACTION_COMMANDS[resolved_action]
         operation_service = OperationService(self.session)
-        existing = await operation_service.get_by_idempotency_key(
-            tenant_id, idempotency_key
-        )
+        existing = await operation_service.get_by_idempotency_key(tenant_id, idempotency_key)
         if existing is not None:
-            if (
-                existing.command_type != command
-                or existing.payload.get("product_id") != product_id
-            ):
-                raise ProductServiceError(
-                    "idempotency_key_conflict", "幂等键已用于其他操作", 409
-                )
+            if existing.command_type != command or existing.payload.get("product_id") != product_id:
+                raise ProductServiceError("idempotency_key_conflict", "幂等键已用于其他操作", 409)
             return existing
 
         product = await self.get_product(tenant_id, product_id)
@@ -391,9 +366,7 @@ class ProductService:
             )
         ).scalar_one_or_none()
         if pending is not None:
-            raise ProductServiceError(
-                "product_operation_pending", "商品已有待处理操作", 409
-            )
+            raise ProductServiceError("product_operation_pending", "商品已有待处理操作", 409)
 
     @staticmethod
     def _settled_product_status(product: LocalProduct) -> ProductStatus:
@@ -401,13 +374,9 @@ class ProductService:
             remote_status = ProductStatus(product.remote_status)
             desired_status = ProductStatus(product.desired_state)
         except ValueError as error:
-            raise ProductServiceError(
-                "invalid_product_status", "商品状态无效", 409
-            ) from error
+            raise ProductServiceError("invalid_product_status", "商品状态无效", 409) from error
         if desired_status != remote_status:
-            raise ProductServiceError(
-                "product_state_pending", "商品目标状态尚未完成", 409
-            )
+            raise ProductServiceError("product_state_pending", "商品目标状态尚未完成", 409)
         return remote_status
 
     async def _existing_product_operation(
@@ -424,9 +393,7 @@ class ProductService:
             or not isinstance(product_id, str)
             or (expected_product_id is not None and product_id != expected_product_id)
         ):
-            raise ProductServiceError(
-                "idempotency_key_conflict", "幂等键已用于其他操作", 409
-            )
+            raise ProductServiceError("idempotency_key_conflict", "幂等键已用于其他操作", 409)
         product = await self.get_product(tenant_id, product_id)
         if product is None:
             raise ProductServiceError(
@@ -501,13 +468,9 @@ def product_operation_handlers(
                 "gateway settings are missing", code="gateway_not_configured"
             )
         connection_service = ConnectionService(session, settings)
-        connection = await connection_service.get(
-            operation.tenant_id, product.connection_id
-        )
+        connection = await connection_service.get(operation.tenant_id, product.connection_id)
         if connection is None:
-            raise GatewayTerminalError(
-                "connection was not found", code="connection_not_found"
-            )
+            raise GatewayTerminalError("connection was not found", code="connection_not_found")
         if connection.capability != Capability.LOCAL_LIFE.value:
             raise GatewayTerminalError(
                 "connection does not support Local Life", code="invalid_connection"
@@ -649,9 +612,7 @@ def product_operation_handlers(
                 "remote product identifiers are incomplete", code="product_not_ready"
             )
         gateway = await gateway_for(operation, product)
-        await gateway.update_stock(
-            product.external_product_id, sku.external_sku_id, stock
-        )
+        await gateway.update_stock(product.external_product_id, sku.external_sku_id, stock)
         sku.stock = stock
         sku.last_stock_synced_at = utcnow()
         await session.commit()
@@ -699,9 +660,7 @@ def product_operation_handlers(
             None,
         )
         if action is None:
-            raise GatewayTerminalError(
-                "product action is invalid", code="invalid_product_action"
-            )
+            raise GatewayTerminalError("product action is invalid", code="invalid_product_action")
         _, target, current = validate_intent(product, operation)
         if target != _ACTION_TARGETS[action]:
             raise GatewayTerminalError(

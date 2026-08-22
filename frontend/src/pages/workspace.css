@@ -1,0 +1,12 @@
+.workspace-page { max-width: 1380px; margin: 0 auto; }
+.workspace-page .page-heading { margin-bottom: 22px; }
+.workspace-table-card { border-radius: 7px !important; box-shadow: 0 2px 7px rgba(16,42,67,.04); }
+.workspace-table-card .ant-card-body { padding: 18px; }
+.workspace-state { min-height: 220px; padding: 12px 4px; }
+.workspace-alert { margin-top: 18px; }
+.workspace-select { min-width: 220px; }
+.workspace-subtitle { margin-top: 26px !important; font-size: 18px !important; }
+.operation-note { margin: 0 0 12px; padding: 9px 12px; border-left: 3px solid #0f766e; color: #115e59; background: #ecfdf5; }
+.form-error { color: #b42318; }
+@media (max-width: 640px) { .workspace-page .page-heading { display: block; } .workspace-page .page-heading .ant-space, .workspace-page .page-heading > .ant-btn { margin-top: 12px; } .workspace-table-card .ant-table { min-width: 680px; } .workspace-table-card { overflow-x: auto; } }
+@media (max-width: 640px) { .workspace-select { width: 100%; min-width: 0; } }

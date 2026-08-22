@@ -7,6 +7,17 @@ import { roleLabels } from './auth/roles'
 import { AppShell } from './layout/AppShell'
 import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
+import { StoresPage } from './pages/StoresPage'
+import { ProductsPage } from './pages/ProductsPage'
+import { OrdersPage } from './pages/OrdersPage'
+import { AccountingPage } from './pages/AccountingPage'
+import { PoisPage } from './pages/PoisPage'
+import { MappingsPage } from './pages/MappingsPage'
+import { ConnectionsPage } from './pages/ConnectionsPage'
+import { OperationsPage } from './pages/OperationsPage'
+import { WebhooksPage } from './pages/WebhooksPage'
+import { AuditPage } from './pages/AuditPage'
+import { MembersPage } from './pages/MembersPage'
 import './styles.css'
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 1 } } })
@@ -16,7 +27,21 @@ function Protected() {
   if (auth.status === 'loading') return <div className="app-loading">正在检查登录状态…</div>
   if (auth.status !== 'authenticated') return <Navigate to="/login" replace />
   if (!auth.tenant) return <TenantSelection />
-  return <AppShell><Routes><Route path="/dashboard" element={<DashboardPage />} /><Route path="*" element={<PlaceholderPage />} /></Routes></AppShell>
+  return <AppShell><Routes>
+    <Route path="/dashboard" element={<DashboardPage />} />
+    <Route path="/stores" element={<StoresPage />} />
+    <Route path="/products" element={<ProductsPage />} />
+    <Route path="/orders" element={<OrdersPage />} />
+    <Route path="/accounting" element={<AccountingPage />} />
+    <Route path="/pois" element={<PoisPage />} />
+    <Route path="/mappings" element={<MappingsPage />} />
+    <Route path="/connections" element={<ConnectionsPage />} />
+    <Route path="/operations" element={<OperationsPage />} />
+    <Route path="/webhooks" element={<WebhooksPage />} />
+    <Route path="/audit" element={<AuditPage />} />
+    <Route path="/members" element={<MembersPage />} />
+    <Route path="*" element={<PlaceholderPage />} />
+  </Routes></AppShell>
 }
 
 function TenantSelection() {

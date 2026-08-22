@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from .audit.router import audit_router
 from .connections.router import connection_router
 from .core.config import Settings, get_settings
 from .core.database import create_database
@@ -16,7 +17,7 @@ from .local_life.router_orders import order_router
 from .local_life.router_products import product_router
 from .operations.router import operation_router
 from .stores.router import store_router
-from .webhooks.router import webhook_router
+from .webhooks.router import webhook_events_router, webhook_router
 
 
 @asynccontextmanager
@@ -50,6 +51,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(order_router, prefix="/api/v1")
     application.include_router(accounting_router, prefix="/api/v1")
     application.include_router(webhook_router, prefix="/api/v1")
+    application.include_router(webhook_events_router, prefix="/api/v1")
+    application.include_router(audit_router, prefix="/api/v1")
     return application
 
 

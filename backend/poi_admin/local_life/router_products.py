@@ -40,9 +40,7 @@ def _raise(error: ProductServiceError) -> None:
 
 @product_router.get("/products", response_model=list[ProductResponse])
 async def list_products(
-    context: Annotated[
-        AuthContext, Depends(require_permission(Permission.VIEW_PRODUCTS))
-    ],
+    context: Annotated[AuthContext, Depends(require_permission(Permission.VIEW_PRODUCTS))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[ProductResponse]:
     products = await ProductService(session).list_products(_tenant_id(context))
@@ -52,9 +50,7 @@ async def list_products(
 @product_router.get("/products/{product_id}", response_model=ProductResponse)
 async def get_product(
     product_id: str,
-    context: Annotated[
-        AuthContext, Depends(require_permission(Permission.VIEW_PRODUCTS))
-    ],
+    context: Annotated[AuthContext, Depends(require_permission(Permission.VIEW_PRODUCTS))],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ProductResponse:
     product = await ProductService(session).get_product(_tenant_id(context), product_id)
@@ -70,9 +66,7 @@ async def get_product(
 )
 async def create_product(
     payload: ProductCreateRequest,
-    context: Annotated[
-        AuthContext, Depends(require_permission(Permission.MANAGE_PRODUCTS))
-    ],
+    context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_PRODUCTS))],
     csrf_context: Annotated[AuthContext, Depends(require_csrf)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ProductAcceptedResponse:
@@ -119,9 +113,7 @@ async def _update_product(
 async def update_product(
     product_id: str,
     payload: ProductUpdateRequest,
-    context: Annotated[
-        AuthContext, Depends(require_permission(Permission.MANAGE_PRODUCTS))
-    ],
+    context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_PRODUCTS))],
     csrf_context: Annotated[AuthContext, Depends(require_csrf)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ProductAcceptedResponse:
@@ -139,9 +131,7 @@ async def update_product(
 async def audit_free_update_product(
     product_id: str,
     payload: ProductUpdateRequest,
-    context: Annotated[
-        AuthContext, Depends(require_permission(Permission.MANAGE_PRODUCTS))
-    ],
+    context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_PRODUCTS))],
     csrf_context: Annotated[AuthContext, Depends(require_csrf)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ProductAcceptedResponse:
@@ -160,9 +150,7 @@ async def product_action(
     product_id: str,
     action: ProductAction,
     payload: ProductActionRequest,
-    context: Annotated[
-        AuthContext, Depends(require_permission(Permission.MANAGE_PRODUCTS))
-    ],
+    context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_PRODUCTS))],
     csrf_context: Annotated[AuthContext, Depends(require_csrf)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ProductAcceptedResponse:
@@ -193,9 +181,7 @@ async def product_action(
 async def update_stock(
     sku_id: str,
     payload: StockUpdateRequest,
-    context: Annotated[
-        AuthContext, Depends(require_permission(Permission.MANAGE_INVENTORY))
-    ],
+    context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_INVENTORY))],
     csrf_context: Annotated[AuthContext, Depends(require_csrf)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> StockAcceptedResponse:

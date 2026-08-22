@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from poi_admin.core.database import get_session
 from poi_admin.core.dependencies import AuthContext, require_tenant_permission
 from poi_admin.core.permissions import Permission
+from poi_admin.local_life.models import LocalProduct, LocalSku, ProductStatus
 from poi_admin.operations.models import IntegrationOperation, OperationStatus
 from poi_admin.stores.models import Store, StorePoiMapping
 
@@ -55,11 +56,27 @@ async def dashboard_summary(
             .exists(),
         )
     )
+    pending_audits = await session.scalar(
+        select(func.count())
+        .select_from(LocalProduct)
+        .where(
+            LocalProduct.tenant_id == tenant_id,
+            LocalProduct.remote_status == ProductStatus.UNDER_REVIEW.value,
+        )
+    )
+    low_stock = await session.scalar(
+        select(func.count())
+        .select_from(LocalSku)
+        .where(
+            LocalSku.tenant_id == tenant_id,
+            LocalSku.stock < LocalSku.desired_stock,
+        )
+    )
     return DashboardResponse(
         summary=DashboardSummary(
-            pending_audits=0,
+            pending_audits=int(pending_audits or 0),
             failed_operations=int(failed_operations or 0),
-            low_stock=0,
+            low_stock=int(low_stock or 0),
             unmapped_stores=int(unmapped_stores or 0),
         )
     )

@@ -149,7 +149,24 @@ class ConnectionService:
             if connection.capability == Capability.LOCAL_LIFE.value:
                 return MockLocalLifeGateway(tenant_id, scenario=connection.mock_scenario)
             return MockServicePoiGateway(tenant_id, scenario=connection.mock_scenario)
-        raise GatewayTerminalError("真实微信连接器尚未配置", code="live_gateway_not_configured")
+        if not connection.encrypted_secrets:
+            raise GatewayTerminalError("真实微信连接凭据尚未配置", code="credentials_missing")
+        from .local_life_live import LiveLocalLifeGateway
+        from .service_poi_live import LiveServicePoiGateway
+        from .tokens import token_provider_from_secrets
+
+        secrets = decrypt_secret_bundle(connection.encrypted_secrets, self.settings.encryption_key)
+        base_url = str(secrets.get("api_base_url", "https://api.weixin.qq.com"))
+        provider = token_provider_from_secrets(connection.app_id, secrets, base_url=base_url)
+        if connection.capability == Capability.LOCAL_LIFE.value:
+            return LiveLocalLifeGateway(provider, base_url=base_url)
+        if connection.capability == Capability.SERVICE_POI.value:
+            try:
+                district_id = int(secrets.get("district_id", 0))
+            except (TypeError, ValueError):
+                district_id = 0
+            return LiveServicePoiGateway(provider, base_url=base_url, district_id=district_id)
+        raise GatewayTerminalError("连接能力无效", code="invalid_connection")
 
     @staticmethod
     def public(connection: WeChatConnection) -> ConnectionPublic:

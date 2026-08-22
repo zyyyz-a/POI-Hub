@@ -5,9 +5,13 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from poi_admin.audit.service import AuditService
 from poi_admin.core.config import Settings
+from poi_admin.webhooks.handlers import process_webhook_event
+from poi_admin.webhooks.models import WebhookEvent
 
 from .models import IntegrationOperation
 from .service import OperationService, classify_error
@@ -43,6 +47,8 @@ class OperationWorker:
         self.handlers = handlers
 
     async def run_once(self) -> IntegrationOperation | None:
+        if await self._run_webhook_once():
+            return None
         service = OperationService(self.session)
         operation = await service.claim(self.worker_id)
         if operation is None:
@@ -56,6 +62,14 @@ class OperationWorker:
                 retryable=False,
                 worker_id=self.worker_id,
             )
+            await AuditService(self.session).record(
+                tenant_id=operation.tenant_id,
+                actor_user_id=None,
+                action="integration_operation.failed",
+                resource_type="integration_operation",
+                resource_id=operation.id,
+                after={"status": "failed", "error_code": "handler_not_found"},
+            )
             return operation
         try:
             result = await handler(operation)
@@ -68,10 +82,46 @@ class OperationWorker:
                 retryable=classified.retryable,
                 worker_id=self.worker_id,
             )
+            await AuditService(self.session).record(
+                tenant_id=operation.tenant_id,
+                actor_user_id=None,
+                action="integration_operation.failed",
+                resource_type="integration_operation",
+                resource_id=operation.id,
+                after={"status": "failed", "error_code": classified.code},
+            )
         else:
             await service.mark_succeeded(operation, result, worker_id=self.worker_id)
+            await AuditService(self.session).record(
+                tenant_id=operation.tenant_id,
+                actor_user_id=None,
+                action="integration_operation.succeeded",
+                resource_type="integration_operation",
+                resource_id=operation.id,
+                after={"status": "succeeded", "command_type": operation.command_type},
+            )
         await self.session.refresh(operation)
         return operation
+
+    async def _run_webhook_once(self) -> bool:
+        event = (
+            await self.session.execute(
+                select(WebhookEvent)
+                .where(WebhookEvent.status.in_(["received", "failed"]))
+                .order_by(WebhookEvent.received_at, WebhookEvent.id)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if event is None:
+            return False
+        try:
+            await process_webhook_event(self.session, event)
+        except Exception as error:  # callback failures stay visible and retryable
+            event.status = "failed"
+            event.attempt_count += 1
+            event.error_message = str(error)[:500]
+            await self.session.commit()
+        return True
 
 
 __all__ = ["Handler", "OperationWorker"]
