@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -73,6 +74,18 @@ class OperationWorker:
             return operation
         try:
             result = await handler(operation)
+        except asyncio.CancelledError:
+            # A graceful process shutdown must not strand a claimed operation
+            # in a running state until its lease expires. Return it to the
+            # durable retry queue before propagating cancellation to the caller.
+            await service.mark_failed(
+                operation,
+                code="worker_shutdown",
+                message="Worker is shutting down; operation will be retried",
+                retryable=True,
+                worker_id=self.worker_id,
+            )
+            raise
         except Exception as error:  # boundary sanitizes all handler errors
             classified = classify_error(error)
             await service.mark_failed(

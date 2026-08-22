@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from sqlalchemy import select
 
@@ -113,6 +115,33 @@ async def test_operation_worker_marks_handler_exception_failed_and_releases_leas
     assert refreshed.error_message == "Operation failed; inspect server logs"
     assert refreshed.lease_expires_at is None
     assert refreshed.worker_id == "worker-1"
+
+
+@pytest.mark.asyncio
+async def test_operation_worker_returns_claimed_operation_to_retry_on_cancellation(
+    operation_service, tenant
+) -> None:
+    operation = await operation_service.enqueue(
+        tenant.id, "blocking", "worker-lifecycle:cancel", {}
+    )
+    started = asyncio.Event()
+
+    async def blocking(_operation):
+        started.set()
+        await asyncio.Event().wait()
+
+    worker = OperationWorker(operation_service.session, handlers={"blocking": blocking})
+    task = asyncio.create_task(worker.run_once())
+    await asyncio.wait_for(started.wait(), timeout=1)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    refreshed = await operation_service.get(tenant.id, operation.id)
+    assert refreshed is not None
+    assert refreshed.status == OperationStatus.RETRY_WAIT
+    assert refreshed.error_code == "worker_shutdown"
+    assert refreshed.lease_expires_at is None
 
 
 @pytest.mark.asyncio
