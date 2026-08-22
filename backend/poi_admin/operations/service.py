@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import random
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, cast
 
 from sqlalchemy import and_, or_, select, update
@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from poi_admin.connections.crypto import redact_secrets
+from poi_admin.connections.models import WeChatConnection
 from poi_admin.connections.ports import GatewayError
 
 from .models import IntegrationOperation, OperationStatus, utcnow
@@ -66,6 +67,17 @@ class OperationService:
         resource_ref: str | None = None,
         max_attempts: int = 8,
     ) -> IntegrationOperation:
+        if connection_id is not None:
+            connection = (
+                await self.session.execute(
+                    select(WeChatConnection).where(
+                        WeChatConnection.id == connection_id,
+                        WeChatConnection.tenant_id == tenant_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if connection is None:
+                raise ValueError("connection does not belong to tenant")
         stored_key = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
         existing = await self.get_by_idempotency_key(tenant_id, idempotency_key)
         if existing is not None:
@@ -102,7 +114,7 @@ class OperationService:
                 select(IntegrationOperation).where(
                     IntegrationOperation.tenant_id == tenant_id,
                     IntegrationOperation.id == operation_id,
-                )
+                ).execution_options(populate_existing=True)
             )
         ).scalar_one_or_none()
 
@@ -179,30 +191,75 @@ class OperationService:
         ).scalar_one()
 
     async def mark_succeeded(
-        self, operation: IntegrationOperation, response: dict[str, Any] | None = None
+        self,
+        operation: IntegrationOperation,
+        response: dict[str, Any] | None = None,
+        *,
+        worker_id: str | None = None,
     ) -> None:
-        operation.status = OperationStatus.SUCCEEDED.value
-        operation.response_summary = (
+        owner = worker_id or operation.worker_id
+        if owner is None:
+            return
+        response_summary = (
             cast(dict[str, Any], redact_secrets(response)) if response is not None else None
         )
-        operation.completed_at = utcnow()
-        operation.lease_expires_at = None
+        statement = update(IntegrationOperation).where(
+            IntegrationOperation.id == operation.id,
+            IntegrationOperation.status == OperationStatus.RUNNING.value,
+        )
+        if worker_id is not None:
+            statement = statement.where(IntegrationOperation.worker_id == owner)
+        await self.session.execute(
+            statement
+            .values(
+                status=OperationStatus.SUCCEEDED.value,
+                response_summary=response_summary,
+                completed_at=utcnow(),
+                lease_expires_at=None,
+            )
+            .execution_options(synchronize_session=False)
+        )
         await self.session.commit()
 
     async def mark_failed(
-        self, operation: IntegrationOperation, *, code: str, message: str, retryable: bool
+        self,
+        operation: IntegrationOperation,
+        *,
+        code: str,
+        message: str,
+        retryable: bool,
+        worker_id: str | None = None,
     ) -> None:
-        operation.error_code = code
-        operation.error_message = message[:500]
-        operation.lease_expires_at = None
+        owner = worker_id or operation.worker_id
+        if owner is None:
+            return
+        next_status = OperationStatus.FAILED.value
+        next_attempt: datetime | None = None
+        completed_at: datetime | None = utcnow()
         if retryable and operation.attempt_count < operation.max_attempts:
-            operation.status = OperationStatus.RETRY_WAIT.value
-            operation.next_attempt_at = utcnow() + timedelta(
+            next_status = OperationStatus.RETRY_WAIT.value
+            next_attempt = utcnow() + timedelta(
                 seconds=backoff_seconds(operation.attempt_count)
             )
-        else:
-            operation.status = OperationStatus.FAILED.value
-            operation.completed_at = utcnow()
+            completed_at = None
+        statement = update(IntegrationOperation).where(
+            IntegrationOperation.id == operation.id,
+            IntegrationOperation.status == OperationStatus.RUNNING.value,
+        )
+        if worker_id is not None:
+            statement = statement.where(IntegrationOperation.worker_id == owner)
+        await self.session.execute(
+            statement
+            .values(
+                status=next_status,
+                error_code=code,
+                error_message=message[:500],
+                lease_expires_at=None,
+                next_attempt_at=next_attempt or IntegrationOperation.next_attempt_at,
+                completed_at=completed_at,
+            )
+            .execution_options(synchronize_session=False)
+        )
         await self.session.commit()
 
     async def manual_retry(self, tenant_id: str, operation_id: str) -> IntegrationOperation:

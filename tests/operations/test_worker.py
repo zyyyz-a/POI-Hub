@@ -4,7 +4,8 @@ from datetime import timedelta
 
 import pytest
 
-from poi_admin.connections.ports import GatewayTransientError
+from poi_admin.connections.models import WeChatConnection
+from poi_admin.connections.ports import Capability, ConnectionMode, GatewayTransientError
 from poi_admin.identity.models import Tenant
 from poi_admin.operations.models import OperationStatus
 from poi_admin.operations.service import backoff_seconds, classify_error
@@ -62,6 +63,45 @@ async def test_expired_lease_can_be_reclaimed(operation_service, tenant) -> None
     assert reclaimed is not None and reclaimed.id == operation.id
     assert reclaimed.worker_id == "worker-b"
     assert reclaimed.attempt_count == 2
+
+
+@pytest.mark.asyncio
+async def test_stale_worker_cannot_complete_reclaimed_operation(operation_service, tenant) -> None:
+    operation = await operation_service.enqueue(tenant.id, "sync", "stale-worker:1", {})
+    claimed = await operation_service.claim("worker-a", lease_seconds=30)
+    assert claimed is not None
+    claimed.worker_id = "worker-b"
+    await operation_service.session.commit()
+
+    await operation_service.mark_succeeded(claimed, {"stale": True}, worker_id="worker-a")
+    refreshed = await operation_service.get(tenant.id, operation.id)
+    assert refreshed is not None
+    assert refreshed.status == OperationStatus.RUNNING
+    assert refreshed.worker_id == "worker-b"
+    assert refreshed.response_summary is None
+
+
+@pytest.mark.asyncio
+async def test_enqueue_rejects_connection_from_another_tenant(operation_service, tenant) -> None:
+    other = Tenant(name="Connection Owner", slug="connection-owner")
+    operation_service.session.add(other)
+    await operation_service.session.flush()
+    connection = WeChatConnection(
+        tenant_id=other.id,
+        capability=Capability.LOCAL_LIFE.value,
+        mode=ConnectionMode.MOCK.value,
+    )
+    operation_service.session.add(connection)
+    await operation_service.session.commit()
+
+    with pytest.raises(ValueError, match="connection does not belong to tenant"):
+        await operation_service.enqueue(
+            tenant.id,
+            "sync",
+            "wrong-connection-tenant",
+            {},
+            connection_id=connection.id,
+        )
 
 
 @pytest.mark.asyncio

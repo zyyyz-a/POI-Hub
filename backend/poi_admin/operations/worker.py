@@ -44,7 +44,11 @@ class OperationWorker:
         handler = self.handlers.get(operation.command_type)
         if handler is None:
             await service.mark_failed(
-                operation, code="handler_not_found", message="未配置操作处理器", retryable=False
+                operation,
+                code="handler_not_found",
+                message="未配置操作处理器",
+                retryable=False,
+                worker_id=self.worker_id,
             )
             return operation
         try:
@@ -56,9 +60,10 @@ class OperationWorker:
                 code=classified.code,
                 message=classified.message,
                 retryable=classified.retryable,
+                worker_id=self.worker_id,
             )
         else:
-            await service.mark_succeeded(operation, result)
+            await service.mark_succeeded(operation, result, worker_id=self.worker_id)
         return operation
 
 
