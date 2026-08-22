@@ -258,6 +258,188 @@ class StockAcceptedResponse(BaseModel):
     sku: SkuResponse
 
 
+class OrderSyncRequest(BaseModel):
+    connection_id: str = Field(min_length=1, max_length=36)
+    external_order_id: str = Field(min_length=1, max_length=160)
+    idempotency_key: str = Field(min_length=1, max_length=255)
+
+    @field_validator("connection_id", "external_order_id", "idempotency_key")
+    @classmethod
+    def strip_nonblank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("value cannot be blank")
+        return value
+
+
+class ConsumeVoucherRequest(BaseModel):
+    store_id: str = Field(min_length=1, max_length=160)
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=255)
+
+    @field_validator("store_id")
+    @classmethod
+    def strip_nonblank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("value cannot be blank")
+        return value
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def strip_key(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+
+class RevokeVoucherRequest(BaseModel):
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=255)
+    store_id: str | None = Field(default=None, max_length=160)
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def strip_key(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+    @field_validator("store_id")
+    @classmethod
+    def strip_store(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+
+class AfterSaleSyncRequest(BaseModel):
+    order_id: str = Field(min_length=1, max_length=36)
+    external_after_sale_id: str = Field(min_length=1, max_length=160)
+    idempotency_key: str = Field(min_length=1, max_length=255)
+
+    @field_validator("order_id", "external_after_sale_id", "idempotency_key")
+    @classmethod
+    def strip_nonblank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("value cannot be blank")
+        return value
+
+
+class AccountingSyncRequest(BaseModel):
+    connection_id: str = Field(min_length=1, max_length=36)
+    idempotency_key: str = Field(min_length=1, max_length=255)
+
+    @field_validator("connection_id", "idempotency_key")
+    @classmethod
+    def strip_nonblank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("value cannot be blank")
+        return value
+
+
+class OperationResponse(BaseModel):
+    id: str
+    status: OperationStatus
+    command_type: str
+
+
+class OrderResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    tenant_id: str
+    connection_id: str
+    external_order_id: str
+    status: str
+    total_amount: int
+    paid_amount: int
+    currency: str
+    customer_reference_masked: str | None
+    last_synced_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class OrderAcceptedResponse(BaseModel):
+    operation: OperationResponse
+    order: OrderResponse
+
+
+class VoucherResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    tenant_id: str
+    connection_id: str
+    order_id: str | None
+    external_voucher_id: str
+    external_product_id: str | None
+    external_sku_id: str | None
+    code_masked: str
+    state: str
+    valid_from: datetime | None
+    valid_until: datetime | None
+    consume_store_id: str | None
+    consumed_at: datetime | None
+    revoked_at: datetime | None
+    last_synced_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class VoucherAcceptedResponse(BaseModel):
+    operation: OperationResponse
+    voucher: VoucherResponse
+
+
+class AfterSaleResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    tenant_id: str
+    connection_id: str
+    order_id: str | None
+    external_after_sale_id: str
+    after_sale_type: str | None
+    status: str
+    refund_amount: int
+    last_synced_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AccountingEntryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    tenant_id: str
+    connection_id: str
+    external_id: str
+    entry_type: str | None
+    amount: int
+    currency: str
+    occurred_at: datetime | None
+
+
+class ReconciliationSummary(BaseModel):
+    fund_count: int
+    bill_count: int
+    fund_total: int
+    bill_total: int
+    difference: int
+    difference_count: int
+    differences: list[dict[str, Any]]
+
+
+class AccountingAcceptedResponse(BaseModel):
+    operation: OperationResponse
+    summary: ReconciliationSummary
+
+
 __all__ = [
     "ProductAcceptedResponse",
     "ProductAction",
@@ -265,8 +447,22 @@ __all__ = [
     "ProductCreateRequest",
     "ProductResponse",
     "ProductUpdateRequest",
+    "AccountingAcceptedResponse",
+    "AccountingEntryResponse",
+    "AccountingSyncRequest",
+    "AfterSaleResponse",
+    "AfterSaleSyncRequest",
+    "ConsumeVoucherRequest",
+    "OrderAcceptedResponse",
+    "OrderResponse",
+    "OrderSyncRequest",
+    "OperationResponse",
+    "ReconciliationSummary",
+    "RevokeVoucherRequest",
     "SkuCreateRequest",
     "SkuResponse",
     "StockAcceptedResponse",
     "StockUpdateRequest",
+    "VoucherAcceptedResponse",
+    "VoucherResponse",
 ]

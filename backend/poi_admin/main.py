@@ -11,9 +11,12 @@ from .core.database import create_database
 from .core.health import health_router
 from .dashboard.router import dashboard_router
 from .identity.router import identity_router
+from .local_life.router_accounting import accounting_router
+from .local_life.router_orders import order_router
 from .local_life.router_products import product_router
 from .operations.router import operation_router
 from .stores.router import store_router
+from .webhooks.router import webhook_router
 
 
 @asynccontextmanager
@@ -44,6 +47,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(operation_router, prefix="/api/v1")
     application.include_router(store_router, prefix="/api/v1")
     application.include_router(product_router, prefix="/api/v1")
+    application.include_router(order_router, prefix="/api/v1")
+    application.include_router(accounting_router, prefix="/api/v1")
+    application.include_router(webhook_router, prefix="/api/v1")
     return application
 
 

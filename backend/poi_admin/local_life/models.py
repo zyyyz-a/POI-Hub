@@ -67,9 +67,7 @@ class LocalProduct(Base):
     )
     external_product_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
     merchant_product_id: Mapped[str] = mapped_column(String(128), nullable=False)
-    product_type: Mapped[str] = mapped_column(
-        String(40), nullable=False, default="group_buying"
-    )
+    product_type: Mapped[str] = mapped_column(String(40), nullable=False, default="group_buying")
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     category: Mapped[str | None] = mapped_column(String(160), nullable=True)
     brand: Mapped[str | None] = mapped_column(String(160), nullable=True)
@@ -87,9 +85,7 @@ class LocalProduct(Base):
         String(30), nullable=False, default=ProductStatus.UNDER_REVIEW.value
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    last_synced_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )
@@ -148,4 +144,223 @@ class LocalSku(Base):
     product: Mapped[LocalProduct] = relationship(back_populates="skus")
 
 
-__all__ = ["LocalProduct", "LocalSku", "ProductStatus", "new_id", "utcnow"]
+class LocalOrder(Base):
+    """Tenant-scoped local mirror of a Local Life order."""
+
+    __tablename__ = "local_orders"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "connection_id", "external_order_id", name="uq_local_order_external_id"
+        ),
+        Index("ix_local_order_tenant_status", "tenant_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    connection_id: Mapped[str] = mapped_column(
+        ForeignKey("wechat_connections.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    external_order_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending_sync")
+    total_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    paid_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    currency: Mapped[str] = mapped_column(String(12), nullable=False, default="CNY")
+    customer_reference_masked: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    raw_summary: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    raw_checksum: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    remote_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
+    )
+    vouchers: Mapped[list[LocalVoucher]] = relationship(
+        back_populates="order",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="LocalVoucher.created_at",
+    )
+    after_sales: Mapped[list[LocalAfterSale]] = relationship(
+        back_populates="order",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="LocalAfterSale.created_at",
+    )
+
+
+class LocalVoucher(Base):
+    """Voucher mirror that deliberately stores only a masked code."""
+
+    __tablename__ = "local_vouchers"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "connection_id", "external_voucher_id", name="uq_local_voucher_external_id"
+        ),
+        Index("ix_local_voucher_tenant_state", "tenant_id", "state"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    connection_id: Mapped[str] = mapped_column(
+        ForeignKey("wechat_connections.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    order_id: Mapped[str | None] = mapped_column(
+        ForeignKey("local_orders.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    external_voucher_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    external_product_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    external_sku_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    code_masked: Mapped[str] = mapped_column(String(160), nullable=False, default="")
+    state: Mapped[str] = mapped_column(String(40), nullable=False, default="available")
+    valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    consume_store_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    raw_summary: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
+    )
+    order: Mapped[LocalOrder | None] = relationship(back_populates="vouchers")
+
+
+class LocalAfterSale(Base):
+    """Tenant-scoped after-sale mirror."""
+
+    __tablename__ = "local_after_sales"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "connection_id",
+            "external_after_sale_id",
+            name="uq_local_after_sale_external_id",
+        ),
+        Index("ix_local_after_sale_tenant_status", "tenant_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    connection_id: Mapped[str] = mapped_column(
+        ForeignKey("wechat_connections.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    order_id: Mapped[str | None] = mapped_column(
+        ForeignKey("local_orders.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    external_after_sale_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    after_sale_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending_sync")
+    refund_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    raw_summary: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
+    )
+    order: Mapped[LocalOrder | None] = relationship(back_populates="after_sales")
+
+
+class FundsFlow(Base):
+    """Immutable-ish synchronized funds-flow entry."""
+
+    __tablename__ = "local_funds_flows"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "connection_id", "external_entry_id", name="uq_local_funds_external_id"
+        ),
+        Index("ix_local_funds_tenant_occurred", "tenant_id", "occurred_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    connection_id: Mapped[str] = mapped_column(
+        ForeignKey("wechat_connections.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    external_entry_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    entry_type: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    currency: Mapped[str] = mapped_column(String(12), nullable=False, default="CNY")
+    occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    raw_summary: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
+    )
+
+
+class VoucherBill(Base):
+    """Immutable-ish synchronized voucher bill entry."""
+
+    __tablename__ = "local_voucher_bills"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "connection_id", "external_bill_id", name="uq_local_bill_external_id"
+        ),
+        Index("ix_local_bill_tenant_occurred", "tenant_id", "occurred_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    connection_id: Mapped[str] = mapped_column(
+        ForeignKey("wechat_connections.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    external_bill_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    bill_type: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    currency: Mapped[str] = mapped_column(String(12), nullable=False, default="CNY")
+    occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    raw_summary: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
+    )
+
+
+# Short aliases keep the public domain vocabulary convenient for callers.
+Voucher = LocalVoucher
+AfterSale = LocalAfterSale
+Order = LocalOrder
+LocalFundsFlow = FundsFlow
+LocalVoucherBill = VoucherBill
+
+
+__all__ = [
+    "AfterSale",
+    "FundsFlow",
+    "LocalAfterSale",
+    "LocalFundsFlow",
+    "LocalOrder",
+    "LocalProduct",
+    "LocalSku",
+    "LocalVoucher",
+    "LocalVoucherBill",
+    "Order",
+    "ProductStatus",
+    "Voucher",
+    "VoucherBill",
+    "new_id",
+    "utcnow",
+]

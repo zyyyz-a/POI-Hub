@@ -29,11 +29,17 @@ class OperationWorker:
         if handlers is None:
             if settings is None:
                 raise ValueError("settings are required for application operation handlers")
+            from poi_admin.local_life.accounting import accounting_operation_handlers
+            from poi_admin.local_life.orders import order_operation_handlers
             from poi_admin.local_life.products import product_operation_handlers
+            from poi_admin.local_life.vouchers import voucher_operation_handlers
             from poi_admin.stores.operations import store_operation_handlers
 
             handlers = store_operation_handlers(session, settings)
             handlers.update(product_operation_handlers(session, settings))
+            handlers.update(order_operation_handlers(session, settings))
+            handlers.update(voucher_operation_handlers(session, settings))
+            handlers.update(accounting_operation_handlers(session, settings))
         self.handlers = handlers
 
     async def run_once(self) -> IntegrationOperation | None:
@@ -64,6 +70,7 @@ class OperationWorker:
             )
         else:
             await service.mark_succeeded(operation, result, worker_id=self.worker_id)
+        await self.session.refresh(operation)
         return operation
 
 

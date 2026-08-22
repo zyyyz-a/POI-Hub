@@ -25,6 +25,7 @@ class Permission(StrEnum):
     VIEW_PRODUCTS = "view_products"
     MANAGE_PRODUCTS = "manage_products"
     MANAGE_INVENTORY = "manage_inventory"
+    VIEW_ORDERS = "view_orders"
     MANAGE_ORDERS = "manage_orders"
     CONSUME_VOUCHERS = "consume_vouchers"
     MANAGE_AFTER_SALES = "manage_after_sales"
@@ -47,6 +48,7 @@ _TENANT_ADMIN_PERMISSIONS = frozenset(
         Permission.VIEW_PRODUCTS,
         Permission.MANAGE_PRODUCTS,
         Permission.MANAGE_INVENTORY,
+        Permission.VIEW_ORDERS,
         Permission.MANAGE_ORDERS,
         Permission.CONSUME_VOUCHERS,
         Permission.MANAGE_AFTER_SALES,
@@ -70,6 +72,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.VIEW_PRODUCTS,
             Permission.MANAGE_PRODUCTS,
             Permission.MANAGE_INVENTORY,
+            Permission.VIEW_ORDERS,
             Permission.MANAGE_ORDERS,
             Permission.VIEW_ACCOUNTING,
             Permission.VIEW_OPERATIONS,
@@ -80,6 +83,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
     Role.VERIFIER: frozenset(
         {
             Permission.CONSUME_VOUCHERS,
+            Permission.VIEW_ORDERS,
             Permission.VIEW_OPERATIONS,
         }
     ),
@@ -91,6 +95,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.VIEW_STORES,
             Permission.VIEW_MAPPINGS,
             Permission.VIEW_PRODUCTS,
+            Permission.VIEW_ORDERS,
             Permission.VIEW_DASHBOARD,
         }
     ),
