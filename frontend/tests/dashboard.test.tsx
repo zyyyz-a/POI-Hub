@@ -89,6 +89,19 @@ describe('dashboard states', () => {
     expect(screen.queryByText('连接正常')).not.toBeInTheDocument()
   })
 
+  it('omits aggregate cards missing from the dashboard response', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => response({
+      summary: { failed_operations: 3 },
+    }))
+    renderDashboard()
+
+    expect(await screen.findByText('3')).toBeInTheDocument()
+    expect(screen.getByText('失败操作')).toBeInTheDocument()
+    expect(screen.queryByText('待映射门店')).not.toBeInTheDocument()
+    expect(screen.queryByText('待处理审核')).not.toBeInTheDocument()
+    expect(screen.queryByText('低库存商品')).not.toBeInTheDocument()
+  })
+
   it('drops stale metrics and refetches when the active tenant changes', async () => {
     let resolveSecond!: (value: Response | PromiseLike<Response>) => void
     const secondResponse = new Promise<Response>(resolve => { resolveSecond = resolve })

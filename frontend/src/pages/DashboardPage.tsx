@@ -9,7 +9,7 @@ type Metric = { key: keyof DashboardSummary; label: string; description: string;
 const metrics: Metric[] = [
   { key: 'failed_operations', label: '失败操作', description: '等待重试或人工处理', icon: AlertTriangle, tone: 'red' },
   { key: 'unmapped_stores', label: '待映射门店', description: '尚未确认 POI 的门店', icon: MapPin, tone: 'green' },
-  { key: 'pending_audits', label: '待处理审核', description: '等待微信商品审核结果', icon: ClipboardCheck, tone: 'gold' },
+  { key: 'pending_audits', label: '待处理审核', description: '等待微信商品审核结果', icon: ClipboardCheck, tone: 'amber' },
   { key: 'low_stock', label: '低库存商品', description: '库存低于运营目标的 SKU', icon: PackageSearch, tone: 'blue' },
 ]
 
