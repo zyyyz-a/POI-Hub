@@ -278,7 +278,7 @@ class LiveLocalLifeGateway(LocalLifeGateway):
             item["out_store_id"] = out_store_id
         response = await self.http.post_json(
             "/channels/ec/voucher/revoke",
-            {"revoke_request_no": external_id, "reovke_vouchers": [item]},
+            {"revoke_request_no": external_id, "revoke_vouchers": [item]},
         )
         data = response.get("voucher") or response.get("data") or {"code": external_id, "status": 1}
         return _voucher(data if isinstance(data, Mapping) else {"code": external_id, "status": 1})
