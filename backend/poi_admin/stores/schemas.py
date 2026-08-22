@@ -5,7 +5,15 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+def _strip_required(value: object) -> object:
+    if value is None:
+        return value
+    if not isinstance(value, str):
+        return value
+    return value.strip()
 
 
 class StoreCreateRequest(BaseModel):
@@ -21,6 +29,11 @@ class StoreCreateRequest(BaseModel):
     longitude: float | None = Field(default=None, ge=-180, le=180)
     status: str = Field(default="active", pattern="^(active|inactive)$")
 
+    @field_validator("code", "name", "address", mode="before")
+    @classmethod
+    def strip_required_fields(cls, value: object) -> object:
+        return _strip_required(value)
+
 
 class StoreUpdateRequest(BaseModel):
     version: int = Field(ge=1)
@@ -35,6 +48,11 @@ class StoreUpdateRequest(BaseModel):
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
     status: str | None = Field(default=None, pattern="^(active|inactive)$")
+
+    @field_validator("code", "name", "address", mode="before")
+    @classmethod
+    def strip_required_fields(cls, value: object) -> object:
+        return _strip_required(value)
 
     @model_validator(mode="before")
     @classmethod

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, cast
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from poi_admin.connections.ports import Capability
@@ -112,10 +112,13 @@ async def archive_store(
     context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_STORES))],
     csrf_context: Annotated[AuthContext, Depends(require_csrf)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    version: int = Query(ge=1),
 ) -> Response:
     del csrf_context
     try:
-        await StoreService(session).archive_store(_tenant_id(context), store_id)
+        await StoreService(session).archive_store(
+            _tenant_id(context), store_id, version, context.user.id
+        )
     except StoreServiceError as error:
         _raise(error)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -9,7 +9,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from poi_admin.core.database import get_session
-from poi_admin.core.dependencies import AuthContext, require_tenant
+from poi_admin.core.dependencies import AuthContext, require_tenant_permission
+from poi_admin.core.permissions import Permission
 from poi_admin.operations.models import IntegrationOperation, OperationStatus
 from poi_admin.stores.models import Store, StorePoiMapping
 
@@ -20,7 +21,9 @@ dashboard_router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 @dashboard_router.get("", response_model=DashboardResponse)
 async def dashboard_summary(
-    context: Annotated[AuthContext, Depends(require_tenant)],
+    context: Annotated[
+        AuthContext, Depends(require_tenant_permission(Permission.VIEW_DASHBOARD))
+    ],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> DashboardResponse:
     """Return aggregate counters for the explicitly selected tenant.

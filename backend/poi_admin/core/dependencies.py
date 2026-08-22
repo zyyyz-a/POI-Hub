@@ -103,13 +103,7 @@ async def get_auth_context(
                 .order_by(Membership.created_at)
             )).scalars().all()
         )
-        if len(memberships) > 1:
-            raise auth_error(
-                "tenant_required",
-                "请先明确选择租户",
-                status.HTTP_400_BAD_REQUEST,
-            )
-        membership = memberships[0] if memberships else None
+        membership = memberships[0] if len(memberships) == 1 else None
         if membership is not None:
             tenant = membership.tenant
             role = (
@@ -151,6 +145,23 @@ def require_permission(permission: Permission) -> Callable[..., Awaitable[AuthCo
     return dependency
 
 
+def require_tenant_permission(
+    permission: Permission,
+) -> Callable[..., Awaitable[AuthContext]]:
+    """Require an explicitly selected tenant before checking a tenant permission."""
+
+    async def dependency(
+        context: Annotated[AuthContext, Depends(require_tenant)],
+    ) -> AuthContext:
+        if not has_permission(context.role, permission):
+            raise auth_error(
+                "permission_denied", "当前角色无权执行此操作", status.HTTP_403_FORBIDDEN
+            )
+        return context
+
+    return dependency
+
+
 async def require_tenant(
     context: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> AuthContext:
@@ -167,5 +178,6 @@ __all__ = [
     "get_auth_context",
     "require_csrf",
     "require_permission",
+    "require_tenant_permission",
     "require_tenant",
 ]

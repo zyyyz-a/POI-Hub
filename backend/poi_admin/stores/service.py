@@ -178,12 +178,41 @@ class StoreService:
         await self.session.refresh(store)
         return store
 
-    async def archive_store(self, tenant_id: str, store_id: str) -> None:
-        store = await self.get_store(tenant_id, store_id)
-        if store is None:
-            raise StoreServiceError("store_not_found", "门店不存在", 404)
-        store.status = "inactive"
-        store.version += 1
+    async def archive_store(
+        self, tenant_id: str, store_id: str, version: int, actor_user_id: str
+    ) -> None:
+        result = cast(
+            CursorResult[Any],
+            await self.session.execute(
+            update(Store)
+            .where(
+                Store.tenant_id == tenant_id,
+                Store.id == store_id,
+                Store.version == version,
+            )
+            .values(status="inactive", version=version + 1)
+            .execution_options(synchronize_session="fetch")
+            ),
+        )
+        if result.rowcount != 1:
+            await self.session.rollback()
+            if await self.get_store(tenant_id, store_id) is None:
+                raise StoreServiceError("store_not_found", "门店不存在", 404)
+            raise StoreServiceError("version_conflict", "门店已被其他操作更新", 409)
+        await self.session.execute(
+            update(StorePoiMapping)
+            .where(
+                StorePoiMapping.tenant_id == tenant_id,
+                StorePoiMapping.store_id == store_id,
+                StorePoiMapping.state == "active",
+            )
+            .values(
+                state="unbound",
+                unbound_by_user_id=actor_user_id,
+                unbound_at=utcnow(),
+            )
+            .execution_options(synchronize_session="fetch")
+        )
         await self.session.commit()
 
     async def list_pois(
@@ -227,6 +256,24 @@ class StoreService:
         except GatewayError as error:
             status_code = 503 if error.retryable else 422
             raise StoreServiceError(error.code, str(error), status_code) from error
+        existing_pois = list(
+            (
+                await self.session.execute(
+                    select(ServicePoi).where(
+                        ServicePoi.tenant_id == tenant_id,
+                        ServicePoi.connection_id == connection.id,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        remote_ids = {remote.poi_id for remote in remote_pois}
+        for stale in existing_pois:
+            if stale.external_poi_id not in remote_ids:
+                stale.remote_status = "deleted"
+                stale.last_synced_at = utcnow()
+
         synchronized: list[ServicePoi] = []
         for remote in remote_pois:
             poi = (
@@ -277,7 +324,11 @@ class StoreService:
             .scalars()
             .all()
         )
-        pois = await self.list_pois(tenant_id, connection_id)
+        pois = [
+            poi
+            for poi in await self.list_pois(tenant_id, connection_id)
+            if poi.remote_status not in {"deleted", "stale"}
+        ]
         active_mappings = list(
             (
                 await self.session.execute(
@@ -349,9 +400,25 @@ class StoreService:
     async def list_candidates(
         self, tenant_id: str, *, include_dismissed: bool = False
     ) -> list[MatchCandidate]:
-        statement = select(MatchCandidate).where(MatchCandidate.tenant_id == tenant_id)
+        statement = (
+            select(MatchCandidate)
+            .join(ServicePoi, ServicePoi.id == MatchCandidate.service_poi_id)
+            .where(
+                MatchCandidate.tenant_id == tenant_id,
+                ServicePoi.remote_status.not_in(["deleted", "stale"]),
+            )
+        )
         if not include_dismissed:
             statement = statement.where(MatchCandidate.dismissed_at.is_(None))
+            active_mapping = select(StorePoiMapping.id).where(
+                StorePoiMapping.tenant_id == tenant_id,
+                StorePoiMapping.state == "active",
+                or_(
+                    StorePoiMapping.store_id == MatchCandidate.store_id,
+                    StorePoiMapping.service_poi_id == MatchCandidate.service_poi_id,
+                ),
+            )
+            statement = statement.where(~active_mapping.exists())
         return list(
             (
                 await self.session.execute(

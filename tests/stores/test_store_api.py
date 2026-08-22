@@ -10,6 +10,7 @@ from poi_admin.core.permissions import Role
 from poi_admin.core.security import hash_password
 from poi_admin.identity.models import Membership, Tenant, User
 from poi_admin.operations.worker import OperationWorker
+from poi_admin.stores.models import StorePoiMapping
 from poi_admin.stores.service import StoreService, StoreServiceError
 
 
@@ -262,6 +263,57 @@ async def test_store_version_update_is_atomic_across_sessions(client: AsyncClien
             )
 
         assert conflict.value.code == "version_conflict"
+
+
+@pytest.mark.asyncio
+async def test_store_rejects_blank_identifiers_and_archive_is_versioned_and_unbinds(
+    client: AsyncClient,
+) -> None:
+    csrf, tenant_id = await login_admin(client)
+    headers = {"X-CSRF-Token": csrf, "X-Tenant-ID": tenant_id}
+    blank = await client.post(
+        "/api/v1/stores",
+        headers=headers,
+        json={"code": "   ", "name": "门店", "address": "地址"},
+    )
+    assert blank.status_code == 422
+
+    created = await client.post(
+        "/api/v1/stores",
+        headers=headers,
+        json={"code": "ARCHIVE-1", "name": "归档门店", "address": "归档地址"},
+    )
+    assert created.status_code == 201
+    store_id = created.json()["id"]
+    stale = await client.delete(
+        f"/api/v1/stores/{store_id}?version=99", headers=headers
+    )
+    assert stale.status_code == 409
+
+    database = client._transport.app.state.database  # type: ignore[attr-defined]
+    async with database.session_factory() as session:
+        tenant = (await session.execute(select(Tenant).where(Tenant.id == tenant_id))).scalar_one()
+        actor = (
+            await session.execute(select(User).where(User.is_platform_admin.is_(True)))
+        ).scalar_one()
+        connection = WeChatConnection(
+            tenant_id=tenant.id,
+            capability=Capability.SERVICE_POI.value,
+            mode=ConnectionMode.MOCK.value,
+        )
+        session.add(connection)
+        await session.commit()
+        service = StoreService(session)
+        store = await service.get_store(tenant_id, store_id)
+        assert store is not None
+        pois = await service.sync_pois(tenant_id, connection, actor_user_id=actor.id)
+        mapping = await service.manual_map(tenant_id, store_id, pois[0].id, actor.id)
+        version = store.version
+        await service.archive_store(tenant_id, store_id, version, actor.id)
+        refreshed = await service.get_store(tenant_id, store_id)
+        assert refreshed is not None and refreshed.status == "inactive"
+        mapping_row = await session.get(StorePoiMapping, mapping.id)
+        assert mapping_row is not None and mapping_row.state == "unbound"
 
 
 @pytest.mark.asyncio
