@@ -11,6 +11,8 @@ export function ProductsPage() {
   const { tenant } = useAuth()
   const client = useQueryClient()
   const [open, setOpen] = useState(false)
+  const [stockSku, setStockSku] = useState<{ id: string; name: string; stock: number; version?: number } | null>(null)
+  const [stockForm] = Form.useForm()
   const [form] = Form.useForm()
   const query = useQuery({ queryKey: ['products', tenant?.id], queryFn: api.products, enabled: Boolean(tenant) })
   const connections = useQuery({ queryKey: ['connections', tenant?.id], queryFn: api.connections, enabled: Boolean(tenant) })
@@ -18,6 +20,7 @@ export function ProductsPage() {
   const productConnections = connectionRows.filter(item => (item as { capability?: string }).capability === 'local_life') as Array<{ id: string }>
   const create = useMutation({ mutationFn: api.createProduct, onSuccess: async () => { setOpen(false); form.resetFields(); await client.invalidateQueries({ queryKey: ['products', tenant?.id] }) } })
   const action = useMutation({ mutationFn: ({ id, action }: { id: string; action: string }) => api.productAction(id, action, 'product-action:' + id + ':' + action + ':' + Date.now()), onSuccess: async () => client.invalidateQueries({ queryKey: ['products', tenant?.id] }) })
+  const stock = useMutation({ mutationFn: ({ skuId, payload }: { skuId: string; payload: Record<string, unknown> }) => api.updateStock(skuId, payload), onSuccess: async () => { setStockSku(null); stockForm.resetFields(); await client.invalidateQueries({ queryKey: ['products', tenant?.id] }) } })
   const products = query.data ?? []
   return <section className="workspace-page">
     <div className="page-heading"><div><Typography.Text className="page-kicker">微信本地生活</Typography.Text><Typography.Title level={2}>团购商品</Typography.Title><Typography.Paragraph>查看商品审核、上架状态和 SKU 库存。</Typography.Paragraph></div><Space><Button icon={<RefreshCw size={15} />} onClick={() => void query.refetch()}>刷新</Button><Button type="primary" icon={<Plus size={15} />} onClick={() => setOpen(true)}>新建商品</Button></Space></div>
@@ -27,7 +30,8 @@ export function ProductsPage() {
         { title: '商户商品 ID', dataIndex: 'merchant_product_id', key: 'merchant_product_id' },
         { title: '状态', dataIndex: 'remote_status', key: 'remote_status', render: (value: string) => <Tag color={value === 'listed' ? 'green' : 'gold'}>{value || '未同步'}</Tag> },
         { title: 'SKU 数', key: 'sku_count', render: (_: unknown, record) => record.skus?.length ?? 0 },
-        { title: '操作', key: 'actions', render: (_, row) => <Dropdown menu={{ items: [{ key: 'list', label: '上架' }, { key: 'delist', label: '下架' }, { key: 'delete', label: '删除', danger: true }], onClick: item => action.mutate({ id: row.id, action: item.key }) }}><Button type="link">生命周期</Button></Dropdown> },
+        { title: '库存', key: 'stock', render: (_: unknown, record) => <Space direction="vertical" size={0}>{record.skus?.map(sku => <Button key={sku.id} type="link" onClick={() => { setStockSku(sku); stockForm.setFieldsValue({ stock: sku.desired_stock ?? sku.stock }) }}>{sku.name}: {sku.stock}</Button>)}</Space> },
+        { title: '操作', key: 'actions', render: (_, row) => <Dropdown menu={{ items: [{ key: 'list', label: '上架' }, { key: 'delist', label: '下架' }, { key: 'delete', label: '删除', danger: true }], onClick: item => item.key === 'delete' ? Modal.confirm({ title: '删除商品？', content: '删除会同步到微信，且不能恢复。', okText: '确认删除', okButtonProps: { danger: true }, cancelText: '取消', onOk: () => action.mutate({ id: row.id, action: item.key }) }) : action.mutate({ id: row.id, action: item.key }) }}><Button type="link">生命周期</Button></Dropdown> },
       ]} />
     </WorkspaceState></Card>
     <Modal title="新建团购商品" open={open} onCancel={() => setOpen(false)} footer={null} destroyOnHidden>
@@ -41,6 +45,13 @@ export function ProductsPage() {
         <Space.Compact block><Form.Item name="sale_price" label="售价（分）" style={{ width: '33%' }}><InputNumber min={1} /></Form.Item><Form.Item name="market_price" label="市场价（分）" style={{ width: '33%' }}><InputNumber min={1} /></Form.Item><Form.Item name="stock" label="库存" style={{ width: '33%' }}><InputNumber min={0} /></Form.Item></Space.Compact>
         {create.isError && <p className="form-error">{create.error.message}</p>}
         <Button block type="primary" htmlType="submit" loading={create.isPending}>提交并等待微信处理</Button>
+      </Form>
+    </Modal>
+    <Modal title={'调整库存：' + (stockSku?.name ?? '')} open={Boolean(stockSku)} onCancel={() => setStockSku(null)} footer={null} destroyOnHidden>
+      <Form form={stockForm} layout="vertical" onFinish={values => stockSku && stock.mutate({ skuId: stockSku.id, payload: { stock: values.stock, version: stockSku.version ?? 1, idempotency_key: 'stock:' + stockSku.id + ':' + Date.now() } })}>
+        <Form.Item name="stock" label="目标库存" rules={[{ required: true }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item>
+        {stock.isError && <p className="form-error">{stock.error.message}</p>}
+        <Button block type="primary" htmlType="submit" loading={stock.isPending}>提交库存更新</Button>
       </Form>
     </Modal>
   </section>

@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import json
-from typing import Annotated, NoReturn
+from typing import Annotated, NoReturn, cast
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from poi_admin.core.config import Settings
 from poi_admin.core.database import get_session
-from poi_admin.core.dependencies import AuthContext, require_permission
+from poi_admin.core.dependencies import AuthContext, require_csrf, require_permission
 from poi_admin.core.permissions import Permission
 
 from .models import WebhookEvent
@@ -46,6 +47,34 @@ async def list_webhook_events(
         }
         for row in rows.scalars().all()
     ]
+
+
+@webhook_events_router.post("/{event_id}/retry")
+async def retry_webhook_event(
+    event_id: str,
+    request: Request,
+    context: AuthContext = Depends(require_permission(Permission.MANAGE_OPERATIONS)),
+    csrf_context: AuthContext = Depends(require_csrf),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, object]:
+    del csrf_context
+    if context.tenant is None:
+        _raise(WebhookServiceError("tenant_required", "请先选择租户", 400))
+    try:
+        event = await WebhookService(
+            session, cast(Settings, request.app.state.settings)
+        ).retry(
+            context.tenant.id, event_id
+        )
+    except WebhookServiceError as error:
+        _raise(error)
+    return {
+        "id": event.id,
+        "event_type": event.event_type,
+        "status": event.status,
+        "attempt_count": event.attempt_count,
+        "error_message": event.error_message,
+    }
 
 
 def _raise(error: WebhookServiceError) -> NoReturn:

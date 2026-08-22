@@ -17,6 +17,7 @@
 后端：uv run pytest -q、uv run ruff check backend tests、uv run mypy backend。
 
 前端：在 frontend 目录运行 npm.cmd test -- --run、npm.cmd run typecheck、npm.cmd run lint、npm.cmd run build。
+浏览器验收：首次在 frontend 目录运行 npm.cmd install（Playwright 会使用已安装的 Chromium），然后运行 npm.cmd run e2e。该命令会启动临时 API、worker 和 Vite 服务，并重置本地测试数据库；不需要 Docker。
 
 ## 功能范围
 

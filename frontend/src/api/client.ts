@@ -44,6 +44,8 @@ export interface DashboardSummary {
   failed_operations?: number
   low_stock?: number
   unmapped_stores?: number
+  reconciliation_differences?: number
+  unhealthy_connections?: number
 }
 
 export interface StoreRecord {
@@ -57,6 +59,27 @@ export interface StoreRecord {
   district?: string | null
 }
 
+export interface PoiRecord {
+  id: string
+  connection_id: string
+  external_poi_id: string
+  name: string
+  address: string
+  latitude?: number | null
+  longitude?: number | null
+  remote_status: string
+  category?: string | null
+}
+
+export interface MappingRecord {
+  id: string
+  store_id: string
+  service_poi_id: string
+  state: string
+  match_score?: number | null
+  match_evidence?: Record<string, unknown>
+}
+
 export interface ProductRecord {
   id: string
   name: string
@@ -64,7 +87,7 @@ export interface ProductRecord {
   remote_status?: string
   desired_state?: string
   version?: number
-  skus?: Array<{ id: string; name: string; stock: number; desired_stock?: number }>
+  skus?: Array<{ id: string; name: string; stock: number; desired_stock?: number; version?: number; merchant_sku_id?: string }>
 }
 
 export interface OrderRecord {
@@ -79,8 +102,8 @@ export interface AccountingSummary {
   fund_count: number
   bill_count: number
   difference_count: number
-  funds?: unknown[]
-  bills?: unknown[]
+  funds?: Array<Record<string, unknown>>
+  bills?: Array<Record<string, unknown>>
   fund_total?: number
   bill_total?: number
   difference?: number
@@ -105,6 +128,15 @@ export interface VoucherRecord {
   state: string
   consume_store_id?: string | null
   order_id?: string | null
+}
+
+export interface AfterSaleRecord {
+  id: string
+  order_id: string
+  external_after_sale_id: string
+  type?: string | null
+  status: string
+  amount?: number
 }
 
 export class ApiError extends Error {
@@ -186,11 +218,12 @@ export const api = {
   platformTenants: () => request<Tenant[]>('/api/v1/platform/tenants'),
   dashboard: () => request<DashboardSummary | { summary: DashboardSummary }>('/api/v1/dashboard'),
   stores: () => request<StoreRecord[]>('/api/v1/stores'),
-  pois: () => request<unknown[]>('/api/v1/pois'),
-  mappings: () => request<unknown[]>('/api/v1/store-poi-mappings'),
+  pois: () => request<PoiRecord[]>('/api/v1/pois'),
+  mappings: () => request<MappingRecord[]>('/api/v1/store-poi-mappings'),
   candidates: () => request<unknown[]>('/api/v1/match-candidates'),
   products: () => request<ProductRecord[]>('/api/v1/local-life/products'),
   orders: () => request<OrderRecord[]>('/api/v1/local-life/orders'),
+  afterSales: () => request<AfterSaleRecord[]>('/api/v1/local-life/after-sales'),
   accounting: async () => {
     const payload = await request<AccountingSummary | { summary: AccountingSummary }>('/api/v1/local-life/accounting/reconciliation')
     return 'summary' in payload ? payload.summary : payload
@@ -201,18 +234,29 @@ export const api = {
   webhooks: () => request<unknown[]>('/api/v1/webhook-events'),
   members: () => request<unknown[]>('/api/v1/members'),
   createStore: (payload: Record<string, unknown>) => request<StoreRecord>('/api/v1/stores', { method: 'POST', body: JSON.stringify(payload) }),
+  updateStore: (storeId: string, payload: Record<string, unknown>) => request<StoreRecord>('/api/v1/stores/' + storeId, { method: 'PATCH', body: JSON.stringify(payload) }),
+  archiveStore: (storeId: string, version: number) => request<void>('/api/v1/stores/' + storeId + '?version=' + version, { method: 'DELETE', body: '{}' }),
   syncPois: (payload: { connection_id: string; idempotency_key: string }) => request<{ operation_id: string; status: string }>('/api/v1/pois/sync', { method: 'POST', body: JSON.stringify(payload) }),
+  searchPois: (connectionId: string, keyword: string) => request<PoiRecord[]>('/api/v1/pois/search?connection_id=' + encodeURIComponent(connectionId) + '&keyword=' + encodeURIComponent(keyword)),
+  createPoi: (payload: Record<string, unknown>) => request<{ operation_id: string; status: string }>('/api/v1/pois', { method: 'POST', body: JSON.stringify(payload) }),
+  updatePoi: (poiId: string, payload: Record<string, unknown>) => request<{ operation_id: string; status: string }>('/api/v1/pois/' + poiId, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deletePoi: (poiId: string, idempotencyKey: string) => request<{ operation_id: string; status: string }>('/api/v1/pois/' + poiId + '/delete', { method: 'POST', body: JSON.stringify({ idempotency_key: idempotencyKey }) }),
+  refreshPoiAudit: (poiId: string, idempotencyKey: string) => request<{ operation_id: string; status: string }>('/api/v1/pois/' + poiId + '/audit-refresh', { method: 'POST', body: JSON.stringify({ idempotency_key: idempotencyKey }) }),
   confirmCandidate: (candidateId: string) => request<unknown>('/api/v1/match-candidates/' + candidateId + '/confirm', { method: 'POST', body: '{}' }),
   dismissCandidate: (candidateId: string) => request<unknown>('/api/v1/match-candidates/' + candidateId + '/dismiss', { method: 'POST', body: '{}' }),
   manualMap: (payload: { store_id: string; service_poi_id: string }) => request<unknown>('/api/v1/store-poi-mappings/manual', { method: 'POST', body: JSON.stringify(payload) }),
+  unbindMapping: (mappingId: string) => request<unknown>('/api/v1/store-poi-mappings/' + mappingId + '/unbind', { method: 'POST', body: '{}' }),
   createProduct: (payload: Record<string, unknown>) => request<ProductRecord & { operation_id?: string }>('/api/v1/local-life/products', { method: 'POST', body: JSON.stringify(payload) }),
+  updateStock: (skuId: string, payload: Record<string, unknown>) => request<unknown>('/api/v1/local-life/skus/' + skuId + '/stock', { method: 'PUT', body: JSON.stringify(payload) }),
   productAction: (productId: string, action: string, idempotencyKey: string) => request<unknown>('/api/v1/local-life/products/' + productId + '/actions/' + action, { method: 'POST', body: JSON.stringify({ idempotency_key: idempotencyKey }) }),
   syncOrder: (payload: { connection_id: string; external_order_id: string; idempotency_key: string }) => request<unknown>('/api/v1/local-life/orders/sync', { method: 'POST', body: JSON.stringify(payload) }),
+  syncAfterSale: (payload: { order_id: string; external_after_sale_id: string; idempotency_key: string }) => request<unknown>('/api/v1/local-life/after-sales/sync', { method: 'POST', body: JSON.stringify(payload) }),
   vouchers: () => request<VoucherRecord[]>('/api/v1/local-life/vouchers'),
   consumeVoucher: (voucherId: string, payload: { store_id: string; idempotency_key?: string }) => request<unknown>('/api/v1/local-life/vouchers/' + voucherId + '/consume', { method: 'POST', body: JSON.stringify(payload) }),
   revokeVoucher: (voucherId: string, payload: { store_id?: string; idempotency_key?: string }) => request<unknown>('/api/v1/local-life/vouchers/' + voucherId + '/revoke', { method: 'POST', body: JSON.stringify(payload) }),
   syncAccounting: (payload: { connection_id: string; idempotency_key: string }) => request<unknown>('/api/v1/local-life/accounting/sync', { method: 'POST', body: JSON.stringify(payload) }),
   retryOperation: (operationId: string) => request<OperationRecord>('/api/v1/operations/' + operationId + '/retry', { method: 'POST', body: '{}' }),
+  retryWebhook: (eventId: string) => request<unknown>('/api/v1/webhook-events/' + eventId + '/retry', { method: 'POST', body: '{}' }),
   createConnection: (payload: Record<string, unknown>) => request<unknown>('/api/v1/connections', { method: 'POST', body: JSON.stringify(payload) }),
   inviteMember: (payload: Record<string, unknown>) => request<unknown>('/api/v1/members/invitations', { method: 'POST', body: JSON.stringify(payload) }),
 }

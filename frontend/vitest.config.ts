@@ -10,5 +10,6 @@ export default defineConfig({
     css: true,
     maxWorkers: 1,
     fileParallelism: false,
+    include: ['tests/**/*.{test,spec}.{js,ts,jsx,tsx}'],
   },
 })

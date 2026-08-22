@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Annotated, cast
+from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from poi_admin.connections.ports import Capability
+from poi_admin.connections.models import WeChatConnection
+from poi_admin.connections.ports import Capability, GatewayError, ServicePoiGateway
 from poi_admin.connections.service import ConnectionService
 from poi_admin.core.config import Settings
 from poi_admin.core.database import get_session
@@ -20,14 +21,25 @@ from poi_admin.core.dependencies import (
 from poi_admin.core.permissions import Permission
 from poi_admin.operations.service import OperationService
 
-from .operations import POI_SYNC_COMMAND
+from .operations import (
+    POI_AUDIT_COMMAND,
+    POI_CREATE_COMMAND,
+    POI_DELETE_COMMAND,
+    POI_SYNC_COMMAND,
+    POI_UPDATE_COMMAND,
+)
 from .schemas import (
     CandidateResponse,
     ManualMappingRequest,
     MappingResponse,
+    PoiActionRequest,
+    PoiCreateRequest,
+    PoiOperationAcceptedResponse,
     PoiResponse,
     PoiSyncAcceptedResponse,
     PoiSyncRequest,
+    PoiUpdateRequest,
+    RemotePoiResponse,
     StoreCreateRequest,
     StoreResponse,
     StoreUpdateRequest,
@@ -132,6 +144,181 @@ async def list_pois(
 ) -> list[PoiResponse]:
     pois = await StoreService(session).list_pois(_tenant_id(context), connection_id)
     return [PoiResponse.model_validate(item) for item in pois]
+
+
+async def _poi_connection(
+    request: Request, session: AsyncSession, tenant_id: str, connection_id: str
+) -> tuple[ConnectionService, WeChatConnection]:
+    connection_service = ConnectionService(session, cast(Settings, request.app.state.settings))
+    connection = await connection_service.get(tenant_id, connection_id)
+    if connection is None:
+        raise auth_error("connection_not_found", "连接不存在", 404)
+    if connection.capability != Capability.SERVICE_POI.value:
+        raise auth_error("invalid_connection", "连接不支持服务 POI", 422)
+    return connection_service, connection
+
+
+@store_router.get("/pois/search", response_model=list[RemotePoiResponse])
+async def search_pois(
+    request: Request,
+    context: Annotated[AuthContext, Depends(require_permission(Permission.VIEW_STORES))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    keyword: str = Query(min_length=1, max_length=160),
+    connection_id: str = Query(min_length=1),
+) -> list[RemotePoiResponse]:
+    connection_service, _ = await _poi_connection(
+        request, session, _tenant_id(context), connection_id
+    )
+    try:
+        gateway = cast(
+            ServicePoiGateway,
+            await connection_service.gateway(_tenant_id(context), connection_id),
+        )
+        results = await gateway.search_pois(keyword)
+    except GatewayError as error:
+        raise auth_error(error.code, str(error), 503 if error.retryable else 422) from error
+    return [
+        RemotePoiResponse(
+            poi_id=item.poi_id,
+            name=item.name,
+            address=item.address,
+            latitude=item.latitude,
+            longitude=item.longitude,
+            status=item.status,
+        )
+        for item in results
+    ]
+
+
+async def _enqueue_poi(
+    session: AsyncSession,
+    tenant_id: str,
+    connection_id: str,
+    command: str,
+    idempotency_key: str,
+    payload: dict[str, Any],
+) -> PoiOperationAcceptedResponse:
+    service = OperationService(session)
+    existing = await service.get_by_idempotency_key(tenant_id, idempotency_key)
+    if existing is not None:
+        if (
+            existing.command_type != command
+            or existing.connection_id != connection_id
+            or existing.payload != payload
+        ):
+            raise auth_error("idempotency_key_conflict", "幂等键已用于其他操作", 409)
+        return PoiOperationAcceptedResponse(operation_id=existing.id, status=existing.status)
+    operation = await service.enqueue(
+        tenant_id,
+        command,
+        idempotency_key,
+        payload,
+        connection_id=connection_id,
+        resource_ref=(f"service_poi:{payload['poi_id']}" if payload.get("poi_id") else None),
+    )
+    return PoiOperationAcceptedResponse(operation_id=operation.id, status=operation.status)
+
+
+@store_router.post(
+    "/pois", response_model=PoiOperationAcceptedResponse, status_code=status.HTTP_202_ACCEPTED
+)
+async def create_poi(
+    payload: PoiCreateRequest,
+    request: Request,
+    context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_MAPPINGS))],
+    csrf_context: Annotated[AuthContext, Depends(require_csrf)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PoiOperationAcceptedResponse:
+    del csrf_context
+    tenant_id = _tenant_id(context)
+    await _poi_connection(request, session, tenant_id, payload.connection_id)
+    body = payload.model_dump(exclude={"connection_id", "idempotency_key"}, exclude_none=True)
+    return await _enqueue_poi(
+        session, tenant_id, payload.connection_id, POI_CREATE_COMMAND, payload.idempotency_key, body
+    )
+
+
+@store_router.patch(
+    "/pois/{poi_id}",
+    response_model=PoiOperationAcceptedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def update_poi(
+    poi_id: str,
+    payload: PoiUpdateRequest,
+    request: Request,
+    context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_MAPPINGS))],
+    csrf_context: Annotated[AuthContext, Depends(require_csrf)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PoiOperationAcceptedResponse:
+    del csrf_context
+    tenant_id = _tenant_id(context)
+    poi = await StoreService(session).get_poi(tenant_id, poi_id)
+    if poi is None:
+        raise auth_error("poi_not_found", "POI 不存在", 404)
+    body = {"poi_id": poi_id, **payload.model_dump(exclude={"idempotency_key"}, exclude_none=True)}
+    await _poi_connection(request, session, tenant_id, poi.connection_id)
+    return await _enqueue_poi(
+        session, tenant_id, poi.connection_id, POI_UPDATE_COMMAND, payload.idempotency_key, body
+    )
+
+
+@store_router.post(
+    "/pois/{poi_id}/delete",
+    response_model=PoiOperationAcceptedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def delete_poi(
+    poi_id: str,
+    payload: PoiActionRequest,
+    request: Request,
+    context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_MAPPINGS))],
+    csrf_context: Annotated[AuthContext, Depends(require_csrf)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PoiOperationAcceptedResponse:
+    del csrf_context
+    tenant_id = _tenant_id(context)
+    poi = await StoreService(session).get_poi(tenant_id, poi_id)
+    if poi is None:
+        raise auth_error("poi_not_found", "POI 不存在", 404)
+    await _poi_connection(request, session, tenant_id, poi.connection_id)
+    return await _enqueue_poi(
+        session,
+        tenant_id,
+        poi.connection_id,
+        POI_DELETE_COMMAND,
+        payload.idempotency_key,
+        {"poi_id": poi_id},
+    )
+
+
+@store_router.post(
+    "/pois/{poi_id}/audit-refresh",
+    response_model=PoiOperationAcceptedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def refresh_poi_audit(
+    poi_id: str,
+    payload: PoiActionRequest,
+    request: Request,
+    context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_MAPPINGS))],
+    csrf_context: Annotated[AuthContext, Depends(require_csrf)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PoiOperationAcceptedResponse:
+    del csrf_context
+    tenant_id = _tenant_id(context)
+    poi = await StoreService(session).get_poi(tenant_id, poi_id)
+    if poi is None:
+        raise auth_error("poi_not_found", "POI 不存在", 404)
+    await _poi_connection(request, session, tenant_id, poi.connection_id)
+    return await _enqueue_poi(
+        session,
+        tenant_id,
+        poi.connection_id,
+        POI_AUDIT_COMMAND,
+        payload.idempotency_key,
+        {"poi_id": poi_id},
+    )
 
 
 @store_router.post(

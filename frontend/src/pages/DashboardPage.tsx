@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Alert, Card, Col, Row, Skeleton, Typography } from 'antd'
-import { AlertTriangle, ArrowUpRight, ClipboardCheck, MapPin, PackageSearch } from 'lucide-react'
+import { AlertTriangle, ArrowUpRight, ClipboardCheck, Link2Off, MapPin, PackageSearch, Scale } from 'lucide-react'
 import { api, dashboardValues, type DashboardSummary } from '../api/client'
 import { useAuth } from '../auth/AuthProvider'
 import './dashboard.css'
@@ -11,6 +11,8 @@ const metrics: Metric[] = [
   { key: 'unmapped_stores', label: '待映射门店', description: '尚未确认 POI 的门店', icon: MapPin, tone: 'green' },
   { key: 'pending_audits', label: '待处理审核', description: '等待微信商品审核结果', icon: ClipboardCheck, tone: 'amber' },
   { key: 'low_stock', label: '低库存商品', description: '库存低于运营目标的 SKU', icon: PackageSearch, tone: 'blue' },
+  { key: 'reconciliation_differences', label: '对账差异', description: '资金流水与券账单的差异', icon: Scale, tone: 'amber' },
+  { key: 'unhealthy_connections', label: '异常连接', description: '需要重新授权或检查的微信连接', icon: Link2Off, tone: 'red' },
 ]
 
 export function DashboardPage() {

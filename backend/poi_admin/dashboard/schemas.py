@@ -10,6 +10,8 @@ class DashboardSummary(BaseModel):
     failed_operations: int = 0
     low_stock: int = 0
     unmapped_stores: int = 0
+    reconciliation_differences: int = 0
+    unhealthy_connections: int = 0
 
 
 class DashboardResponse(BaseModel):

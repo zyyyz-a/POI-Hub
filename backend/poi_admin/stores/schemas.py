@@ -113,6 +113,61 @@ class PoiSyncAcceptedResponse(BaseModel):
     status: str
 
 
+class PoiCreateRequest(BaseModel):
+    connection_id: str
+    idempotency_key: str = Field(min_length=1, max_length=255)
+    name: str = Field(min_length=1, max_length=160)
+    address: str = Field(min_length=1, max_length=500)
+    province: str | None = Field(default=None, max_length=80)
+    city: str | None = Field(default=None, max_length=80)
+    district: str | None = Field(default=None, max_length=80)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    category: str | None = Field(default=None, max_length=160)
+    telephone: str | None = Field(default=None, max_length=64)
+    photo: str | None = Field(default=None, max_length=1000)
+    license: str | None = Field(default=None, max_length=1000)
+    description: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("name", "address", mode="before")
+    @classmethod
+    def strip_required_fields(cls, value: object) -> object:
+        return _strip_required(value)
+
+
+class PoiUpdateRequest(BaseModel):
+    idempotency_key: str = Field(min_length=1, max_length=255)
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    address: str | None = Field(default=None, min_length=1, max_length=500)
+    category: str | None = Field(default=None, max_length=160)
+    telephone: str | None = Field(default=None, max_length=64)
+    photo: str | None = Field(default=None, max_length=1000)
+    description: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("name", "address", mode="before")
+    @classmethod
+    def strip_optional_fields(cls, value: object) -> object:
+        return _strip_required(value)
+
+
+class PoiActionRequest(BaseModel):
+    idempotency_key: str = Field(min_length=1, max_length=255)
+
+
+class PoiOperationAcceptedResponse(BaseModel):
+    operation_id: str
+    status: str
+
+
+class RemotePoiResponse(BaseModel):
+    poi_id: str
+    name: str
+    address: str
+    latitude: float | None = None
+    longitude: float | None = None
+    status: str
+
+
 class CandidateResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -157,9 +212,14 @@ __all__ = [
     "CandidateResponse",
     "ManualMappingRequest",
     "MappingResponse",
+    "PoiActionRequest",
+    "PoiCreateRequest",
+    "PoiOperationAcceptedResponse",
     "PoiResponse",
     "PoiSyncAcceptedResponse",
     "PoiSyncRequest",
+    "PoiUpdateRequest",
+    "RemotePoiResponse",
     "StoreCreateRequest",
     "StoreResponse",
     "StoreUpdateRequest",

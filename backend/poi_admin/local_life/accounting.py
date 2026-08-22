@@ -150,6 +150,28 @@ class AccountingService:
             "difference": fund_total - bill_total,
             "difference_count": len(differences),
             "differences": differences,
+            "funds": [
+                {
+                    "id": item.id,
+                    "external_id": item.external_entry_id,
+                    "entry_type": item.entry_type,
+                    "amount": item.amount,
+                    "currency": item.currency,
+                    "occurred_at": item.occurred_at,
+                }
+                for item in funds
+            ],
+            "bills": [
+                {
+                    "id": item.id,
+                    "external_id": item.external_bill_id,
+                    "entry_type": item.bill_type,
+                    "amount": item.amount,
+                    "currency": item.currency,
+                    "occurred_at": item.occurred_at,
+                }
+                for item in bills
+            ],
         }
 
 

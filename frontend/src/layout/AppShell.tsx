@@ -13,6 +13,7 @@ type NavItem = { key: string; label: string; icon: ReactNode; roles?: Role[] }
 const navigation: NavItem[] = [
   { key: '/dashboard', label: '运营总览', icon: <DashboardOutlined /> },
   { key: '/stores', label: '门店管理', icon: <ShopOutlined />, roles: ['platform_admin', 'tenant_admin', 'operator', 'auditor'] },
+  { key: '/pois', label: '服务 POI', icon: <ApartmentOutlined />, roles: ['platform_admin', 'tenant_admin', 'operator', 'auditor'] },
   { key: '/mappings', label: 'POI 映射', icon: <ApartmentOutlined />, roles: ['platform_admin', 'tenant_admin', 'operator', 'auditor'] },
   { key: '/products', label: '团购商品', icon: <GiftOutlined />, roles: ['platform_admin', 'tenant_admin', 'operator', 'auditor'] },
   { key: '/orders', label: '订单与券码', icon: <ShoppingCartOutlined />, roles: ['platform_admin', 'tenant_admin', 'operator', 'verifier', 'auditor'] },

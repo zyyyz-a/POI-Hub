@@ -108,6 +108,25 @@ class WebhookService:
         await self.session.refresh(row)
         return row, False
 
+    async def retry(self, tenant_id: str, event_id: str) -> WebhookEvent:
+        event = (
+            await self.session.execute(
+                select(WebhookEvent).where(
+                    WebhookEvent.tenant_id == tenant_id,
+                    WebhookEvent.id == event_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if event is None:
+            raise WebhookServiceError("webhook_not_found", "回调事件不存在", 404)
+        if event.status not in {"failed", "received"}:
+            raise WebhookServiceError("webhook_not_retryable", "该回调已处理完成", 409)
+        event.status = "received"
+        event.error_message = None
+        await self.session.commit()
+        await self.session.refresh(event)
+        return event
+
     def decrypt_payload(self, connection: WeChatConnection, encrypted: str) -> dict[str, Any]:
         secrets = self.callback_secrets(connection)
         app_id = connection.app_id or str(secrets.get("app_id", ""))

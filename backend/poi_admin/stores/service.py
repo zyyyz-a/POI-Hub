@@ -231,6 +231,55 @@ class StoreService:
             .all()
         )
 
+    async def get_poi(self, tenant_id: str, poi_id: str) -> ServicePoi | None:
+        return (
+            await self.session.execute(
+                select(ServicePoi).where(
+                    ServicePoi.tenant_id == tenant_id,
+                    ServicePoi.id == poi_id,
+                )
+            )
+        ).scalar_one_or_none()
+
+    async def save_poi_result(
+        self, tenant_id: str, connection: WeChatConnection, result: PoiResult
+    ) -> ServicePoi:
+        if connection.tenant_id != tenant_id:
+            raise StoreServiceError("connection_not_found", "连接不存在", 404)
+        poi = (
+            await self.session.execute(
+                select(ServicePoi).where(
+                    ServicePoi.tenant_id == tenant_id,
+                    ServicePoi.connection_id == connection.id,
+                    ServicePoi.external_poi_id == result.poi_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if poi is None:
+            poi = ServicePoi(
+                tenant_id=tenant_id,
+                connection_id=connection.id,
+                external_poi_id=result.poi_id,
+                name=result.name,
+                address=result.address,
+                remote_status=result.status,
+                raw_checksum=_checksum(result),
+            )
+            self.session.add(poi)
+        poi.name = result.name
+        poi.address = result.address
+        poi.latitude = result.latitude
+        poi.longitude = result.longitude
+        poi.remote_status = result.status
+        poi.category = str(result.raw.get("category")) if result.raw.get("category") else None
+        qualification = result.raw.get("qualification_summary")
+        poi.qualification_summary = qualification if isinstance(qualification, dict) else None
+        poi.raw_checksum = _checksum(result)
+        poi.last_synced_at = utcnow()
+        await self.session.commit()
+        await self.session.refresh(poi)
+        return poi
+
     async def sync_pois(
         self,
         tenant_id: str,

@@ -433,6 +433,8 @@ class ReconciliationSummary(BaseModel):
     difference: int
     difference_count: int
     differences: list[dict[str, Any]]
+    funds: list[dict[str, Any]] = Field(default_factory=list)
+    bills: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class AccountingAcceptedResponse(BaseModel):
