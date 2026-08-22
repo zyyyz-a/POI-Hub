@@ -151,5 +151,12 @@ async def test_multiple_memberships_require_explicit_tenant_selection(client: As
     )
     assert len(login.json()["tenants"]) == 2
     response = await client.get("/api/v1/me")
-    assert response.status_code == 400
-    assert response.json()["detail"]["code"] == "tenant_required"
+    assert response.status_code == 200
+    assert response.json()["tenant"] is None
+    assert {item["tenant_id"] for item in response.json()["tenants"]} == {
+        item["tenant_id"] for item in login.json()["tenants"]
+    }
+
+    dashboard = await client.get("/api/v1/dashboard")
+    assert dashboard.status_code == 400
+    assert dashboard.json()["detail"]["code"] == "tenant_required"

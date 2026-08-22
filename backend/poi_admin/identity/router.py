@@ -139,10 +139,19 @@ async def csrf_token(
     return {"csrf_token": token}
 
 
-async def me(context: Annotated[AuthContext, Depends(get_auth_context)]) -> MeResponse:
+async def me(
+    context: Annotated[AuthContext, Depends(get_auth_context)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> MeResponse:
     tenant = TenantResponse.model_validate(context.tenant) if context.tenant else None
     membership = _membership_response(context.membership) if context.membership else None
-    return MeResponse(user=_user_response(context.user), tenant=tenant, membership=membership)
+    memberships = await IdentityService(session).memberships_for_user(context.user.id)
+    return MeResponse(
+        user=_user_response(context.user),
+        tenant=tenant,
+        membership=membership,
+        tenants=[_membership_response(item) for item in memberships],
+    )
 
 
 identity_router.add_api_route("/me", me, methods=["GET"], response_model=MeResponse)

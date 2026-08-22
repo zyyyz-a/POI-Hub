@@ -3,12 +3,11 @@ import { LogoutOutlined, ShopOutlined, TeamOutlined, ApartmentOutlined, Dashboar
 import { Link, useLocation } from 'react-router-dom'
 import { useState, type ReactNode } from 'react'
 import { useAuth } from '../auth/AuthProvider'
+import { roleLabels } from '../auth/roles'
 import type { Role } from '../api/client'
 import './shell.css'
 
 const { Header, Sider, Content } = Layout
-
-const labels: Record<Role, string> = { platform_admin: '平台管理员', tenant_admin: '租户管理员', operator: '运营员', verifier: '核销员', auditor: '审计员' }
 
 type NavItem = { key: string; label: string; icon: ReactNode; roles?: Role[] }
 const navigation: NavItem[] = [
@@ -37,7 +36,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <nav className="side-nav" aria-label="主导航">
           {items.map(item => <Link key={item.key} to={item.key} className={`nav-link ${active === item.key ? 'active' : ''}`}>{item.icon}<span>{item.label}</span></Link>)}
         </nav>
-        <div className="sider-foot"><span className="status-dot" /> Mock 环境</div>
+        <div className="sider-foot"><span className="status-dot" /> 模拟环境</div>
       </Sider>
       <Layout>
         <Header className="poi-header">
@@ -46,7 +45,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {auth.tenant && <TenantSwitcher />}
           </div>
           <Space size="middle">
-            <Tag color="blue">{role ? labels[role] : '未选择角色'}</Tag>
+            <Tag color="blue">{role ? roleLabels[role] : '未选择角色'}</Tag>
             <Avatar size="small" className="user-avatar">{auth.user?.display_name.slice(0, 1) || '?'}</Avatar>
             <span className="user-name">{auth.user?.display_name}</span>
             <Tooltip title="退出登录"><Button type="text" aria-label="退出登录" icon={<LogoutOutlined />} onClick={() => void auth.logout()} /></Tooltip>
@@ -66,7 +65,7 @@ function TenantSwitcher() {
       <span className="tenant-label">当前租户</span><strong>{auth.tenant?.name}</strong><SwapOutlined />
     </button>
     {open && <div className="tenant-menu" role="menu">
-      {auth.tenants.map(item => <button key={item.tenant_id} role="menuitem" disabled={item.tenant_id === auth.tenant?.id} onClick={() => { setOpen(false); void auth.selectTenant(item.tenant_id) }}>{item.tenant_name}<small>{labels[item.role]}</small></button>)}
+      {auth.tenants.map(item => <button key={item.tenant_id} role="menuitem" disabled={item.tenant_id === auth.tenant?.id} onClick={() => { setOpen(false); void auth.selectTenant(item.tenant_id) }}>{item.tenant_name}<small>{roleLabels[item.role]}</small></button>)}
     </div>}
   </div>
 }

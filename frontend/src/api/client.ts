@@ -30,6 +30,7 @@ export interface MeResponse {
   user: User
   tenant: Tenant | null
   membership: Membership | null
+  tenants: Membership[]
 }
 
 export interface LoginResponse {
@@ -48,12 +49,16 @@ export interface DashboardSummary {
 export class ApiError extends Error {
   status: number
   code?: string
+  correlation_id?: string
+  field_errors?: unknown
 
-  constructor(message: string, status: number, code?: string) {
+  constructor(message: string, status: number, code?: string, correlationId?: string, fieldErrors?: unknown) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
+    this.correlation_id = correlationId
+    this.field_errors = fieldErrors
   }
 }
 
@@ -65,18 +70,38 @@ export function setCsrfToken(value: string | undefined) {
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
-  headers.set('Accept', 'application/json')
+  headers.set('Accept', 'application/problem+json, application/json')
   if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
   if (csrfToken && init.method && init.method !== 'GET') headers.set('X-CSRF-Token', csrfToken)
 
   const response = await fetch(path, { ...init, credentials: 'include', headers })
   if (response.status === 204) return undefined as T
-  const payload = await response.json().catch(() => ({})) as { detail?: string; message?: string; code?: string }
+  const payload: unknown = await response.json().catch(() => ({}))
   if (!response.ok) {
-    const detail = typeof payload.detail === 'string' ? payload.detail : payload.message
-    throw new ApiError(detail || '请求失败，请稍后重试', response.status, payload.code)
+    const problem = isRecord(payload) ? payload : {}
+    const nested = isRecord(problem.detail) ? problem.detail : {}
+    const message = stringValue(problem.detail)
+      ?? stringValue(nested.message)
+      ?? stringValue(problem.message)
+      ?? stringValue(problem.title)
+      ?? '请求失败，请稍后重试'
+    throw new ApiError(
+      message,
+      response.status,
+      stringValue(problem.code) ?? stringValue(nested.code),
+      stringValue(problem.correlation_id) ?? stringValue(nested.correlation_id),
+      problem.field_errors ?? nested.field_errors,
+    )
   }
   return payload as T
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === 'string' && value ? value : undefined
 }
 
 export const api = {

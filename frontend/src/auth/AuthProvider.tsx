@@ -19,21 +19,6 @@ export interface AuthContextValue {
 
 export const AuthContext = createContext<AuthContextValue | null>(null)
 
-const tenantStorageKey = 'poi-hub-tenants'
-
-function storedTenants(): Membership[] {
-  try {
-    const value = sessionStorage.getItem(tenantStorageKey)
-    return value ? JSON.parse(value) as Membership[] : []
-  } catch {
-    return []
-  }
-}
-
-function storeTenants(tenants: Membership[]) {
-  sessionStorage.setItem(tenantStorageKey, JSON.stringify(tenants))
-}
-
 async function resolveTenants(user: User, memberships: Membership[]): Promise<Membership[]> {
   if (!user.is_platform_admin) return memberships
   const tenants = await api.platformTenants()
@@ -54,7 +39,7 @@ function stateFromMe(result: MeResponse, tenants: Membership[] = []): Pick<AuthC
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<Pick<AuthContextValue, 'user' | 'tenant' | 'membership' | 'tenants'>>({ user: null, tenant: null, membership: null, tenants: storedTenants() })
+  const [state, setState] = useState<Pick<AuthContextValue, 'user' | 'tenant' | 'membership' | 'tenants'>>({ user: null, tenant: null, membership: null, tenants: [] })
   const [status, setStatus] = useState<AuthStatus>('loading')
   const [csrfToken, setToken] = useState<string>()
   const [error, setError] = useState<string>()
@@ -64,10 +49,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const result = await api.me()
       const token = await api.csrf()
-      const cachedTenants = storedTenants()
-      const tenants = cachedTenants.length ? cachedTenants : await resolveTenants(result.user, [])
+      const tenants = await resolveTenants(result.user, result.tenants)
       setToken(token)
-      storeTenants(tenants)
       setState(stateFromMe(result, tenants))
       setStatus('authenticated')
     } catch (err) {
@@ -88,7 +71,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const result: LoginResponse = await api.login(email, password)
     const tenants = await resolveTenants(result.user, result.tenants)
     setToken(result.csrf_token)
-    storeTenants(tenants)
     setState(current => ({ ...current, user: result.user, tenants }))
     if (tenants.length === 1) {
       const selected = await api.selectTenant(tenants[0].tenant_id)
@@ -109,7 +91,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try { await api.logout() } finally {
       setCsrfToken(undefined)
       setToken(undefined)
-      sessionStorage.removeItem(tenantStorageKey)
       setState({ user: null, tenant: null, membership: null, tenants: [] })
       setStatus('unauthenticated')
     }

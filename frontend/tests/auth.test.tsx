@@ -28,6 +28,7 @@ describe('authentication flow', () => {
       .mockImplementationOnce(() => response({ user, tenants: [tenant], csrf_token: 'csrf-1' }))
       .mockImplementationOnce(() => response({
         user, tenant: { id: 'tenant-demo', name: '示例租户', slug: 'demo', status: 'active' }, membership: tenant,
+        tenants: [tenant],
       }))
       .mockImplementation(() => response({
         user, tenant: { id: 'tenant-demo', name: '示例租户', slug: 'demo', status: 'active' }, membership: tenant,
@@ -36,6 +37,7 @@ describe('authentication flow', () => {
 
     render(<App />)
     expect(await screen.findByRole('heading', { name: '登录 POI Hub' })).toBeInTheDocument()
+    expect(screen.getByText('本地生活 / 门店点位')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: user.email } })
     fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'password' } })
@@ -57,6 +59,23 @@ describe('authentication flow', () => {
     render(<App />)
     expect(await screen.findByRole('heading', { name: '运营总览' })).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/auth/csrf', expect.objectContaining({ credentials: 'include' }))
+  })
+
+  it('restores multiple memberships without session storage', async () => {
+    const secondTenant = { ...tenant, id: 'membership-2', tenant_id: 'tenant-2', tenant_name: '第二租户' }
+    vi.spyOn(globalThis, 'fetch')
+      .mockImplementationOnce(() => response({
+        user, tenant: null, membership: null, tenants: [tenant, secondTenant],
+      }))
+      .mockImplementationOnce(() => response({ csrf_token: 'csrf-restored' }))
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: '选择工作租户' })).toBeInTheDocument()
+    expect(screen.getByText('租户选择')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /第二租户/ })).toBeInTheDocument()
+    expect(screen.getAllByText('租户管理员')).toHaveLength(2)
+    expect(sessionStorage.getItem('poi-hub-tenants')).toBeNull()
   })
 
   it('requires an explicit choice when the user can access multiple tenants', async () => {
@@ -99,5 +118,21 @@ describe('authentication flow', () => {
     window.history.pushState({}, '', '/dashboard')
     render(<App />)
     expect(await screen.findByRole('heading', { name: '登录 POI Hub' })).toBeInTheDocument()
+  })
+
+  it('uses Chinese workspace copy for placeholder routes', async () => {
+    window.history.replaceState({}, '', '/not-ready')
+    vi.spyOn(globalThis, 'fetch')
+      .mockImplementationOnce(() => response({
+        user, tenant: { id: 'tenant-demo', name: '示例租户', slug: 'demo', status: 'active' },
+        membership: tenant, tenants: [tenant],
+      }))
+      .mockImplementationOnce(() => response({ csrf_token: 'csrf-restored' }))
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: '页面正在准备中' })).toBeInTheDocument()
+    expect(screen.getByText('工作区')).toBeInTheDocument()
+    expect(screen.queryByText('WORKSPACE')).not.toBeInTheDocument()
   })
 })

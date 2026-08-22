@@ -35,6 +35,6 @@ export function LoginPage() {
       </Form>
       <p className="login-note">仅限受邀成员使用，请联系平台管理员获取账号。</p>
     </section>
-    <aside className="login-aside"><span className="aside-kicker">LOCAL LIFE / POI</span><h2>让每一次核销，<br />都清晰可追溯。</h2><p>连接门店、商品、订单与券码，集中处理微信本地生活运营。</p><div className="aside-rule" /></aside>
+    <aside className="login-aside"><span className="aside-kicker">本地生活 / 门店点位</span><h2>让每一次核销，<br />都清晰可追溯。</h2><p>连接门店、商品、订单与券码，集中处理微信本地生活运营。</p><div className="aside-rule" /></aside>
   </main>
 }

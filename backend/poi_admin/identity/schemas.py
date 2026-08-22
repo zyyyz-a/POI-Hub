@@ -114,6 +114,7 @@ class MeResponse(BaseModel):
     user: UserResponse
     tenant: TenantResponse | None
     membership: MembershipResponse | None
+    tenants: list[MembershipResponse] = Field(default_factory=list)
 
 
 class InvitationResponse(BaseModel):
