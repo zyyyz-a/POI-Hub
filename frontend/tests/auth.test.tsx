@@ -120,7 +120,7 @@ describe('authentication flow', () => {
     expect(await screen.findByRole('heading', { name: '登录 POI Hub' })).toBeInTheDocument()
   })
 
-  it('uses Chinese workspace copy for placeholder routes', async () => {
+  it('shows a navigable not-found page for unknown routes', async () => {
     window.history.replaceState({}, '', '/not-ready')
     vi.spyOn(globalThis, 'fetch')
       .mockImplementationOnce(() => response({
@@ -131,8 +131,8 @@ describe('authentication flow', () => {
 
     render(<App />)
 
-    expect(await screen.findByRole('heading', { name: '页面正在准备中' })).toBeInTheDocument()
-    expect(screen.getByText('工作区')).toBeInTheDocument()
-    expect(screen.queryByText('WORKSPACE')).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '页面不存在' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '返回运营总览' })).toHaveAttribute('href', '/dashboard')
+    expect(screen.queryByText('页面正在准备中')).not.toBeInTheDocument()
   })
 })

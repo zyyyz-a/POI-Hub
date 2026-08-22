@@ -34,6 +34,7 @@ describe('application shell', () => {
   it('shows member administration to tenant administrators', () => {
     renderShell({ membership: { ...baseAuth.membership!, role: 'tenant_admin' }, user: { ...baseAuth.user!, display_name: '租户管理员' } })
     expect(screen.getByText('成员管理')).toBeInTheDocument()
+    expect(screen.queryByText('系统设置')).not.toBeInTheDocument()
   })
 
   it('renders a tenant switcher and calls selection handler', async () => {

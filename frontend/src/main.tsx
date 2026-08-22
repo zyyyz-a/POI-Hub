@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from './auth/AuthProvider'
 import { roleLabels } from './auth/roles'
@@ -40,7 +40,7 @@ function Protected() {
     <Route path="/webhooks" element={<WebhooksPage />} />
     <Route path="/audit" element={<AuditPage />} />
     <Route path="/members" element={<MembersPage />} />
-    <Route path="*" element={<PlaceholderPage />} />
+    <Route path="*" element={<NotFoundPage />} />
   </Routes></AppShell>
 }
 
@@ -58,8 +58,8 @@ function TenantSelection() {
   </main>
 }
 
-function PlaceholderPage() {
-  return <section className="placeholder-page"><span className="page-kicker">工作区</span><h2>页面正在准备中</h2><p>该模块的后端接口正在接入，运营总览可继续使用。</p></section>
+function NotFoundPage() {
+  return <section className="not-found-page"><span className="page-kicker">工作区</span><h2>页面不存在</h2><p>当前地址没有对应的运营模块。</p><Link className="not-found-link" to="/dashboard">返回运营总览</Link></section>
 }
 
 export function App() {

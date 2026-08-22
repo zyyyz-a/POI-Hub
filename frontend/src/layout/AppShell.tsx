@@ -1,5 +1,5 @@
 import { App as AntApp, Avatar, Button, Layout, Space, Tag, Tooltip } from 'antd'
-import { LogoutOutlined, ShopOutlined, TeamOutlined, ApartmentOutlined, DashboardOutlined, LinkOutlined, GiftOutlined, ShoppingCartOutlined, SafetyCertificateOutlined, SettingOutlined, SwapOutlined, SyncOutlined, NotificationOutlined } from '@ant-design/icons'
+import { LogoutOutlined, ShopOutlined, TeamOutlined, ApartmentOutlined, DashboardOutlined, LinkOutlined, GiftOutlined, ShoppingCartOutlined, SafetyCertificateOutlined, SwapOutlined, SyncOutlined, NotificationOutlined } from '@ant-design/icons'
 import { Link, useLocation } from 'react-router-dom'
 import { useState, type ReactNode } from 'react'
 import { useAuth } from '../auth/AuthProvider'
@@ -23,7 +23,6 @@ const navigation: NavItem[] = [
   { key: '/connections', label: '微信连接', icon: <LinkOutlined />, roles: ['platform_admin', 'tenant_admin'] },
   { key: '/members', label: '成员管理', icon: <TeamOutlined />, roles: ['platform_admin', 'tenant_admin'] },
   { key: '/audit', label: '审计日志', icon: <SafetyCertificateOutlined />, roles: ['platform_admin', 'tenant_admin', 'auditor'] },
-  { key: '/settings', label: '系统设置', icon: <SettingOutlined />, roles: ['platform_admin', 'tenant_admin'] },
 ]
 
 export function AppShell({ children }: { children: ReactNode }) {

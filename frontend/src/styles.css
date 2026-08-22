@@ -10,9 +10,10 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: #f4f7fb; }
 button, input { font: inherit; }
 a { color: inherit; text-decoration: none; }
 .app-loading { display: grid; min-height: 100vh; place-items: center; color: #55708f; }
-.placeholder-page { max-width: 720px; padding: 68px 24px; }
-.placeholder-page h2 { margin: 10px 0 8px; font-size: 26px; color: #102a43; }
-.placeholder-page p { margin: 0; color: #627d98; }
+.not-found-page { max-width: 720px; padding: 68px 24px; }
+.not-found-page h2 { margin: 10px 0 8px; font-size: 26px; color: #102a43; }
+.not-found-page p { margin: 0 0 18px; color: #627d98; }
+.not-found-link { color: #0f766e; font-weight: 700; }
 .page-kicker { color: #829ab1 !important; font-size: 11px; font-weight: 700; letter-spacing: .12em; }
 .tenant-selection { width: min(100% - 40px, 620px); margin: 0 auto; padding: 72px 0; }
 .tenant-selection .login-brand { margin-bottom: 70px; color: #102a43; }
