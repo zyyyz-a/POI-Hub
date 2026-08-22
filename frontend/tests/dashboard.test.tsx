@@ -58,7 +58,7 @@ describe('dashboard states', () => {
     expect(screen.queryByText('Mock 正常')).not.toBeInTheDocument()
   })
 
-  it('renders only aggregate values backed by the current API', async () => {
+  it('renders all aggregate values backed by the dashboard API', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(() => response({
       summary: { pending_audits: 8, failed_operations: 2, low_stock: 4, unmapped_stores: 6 },
     }))
@@ -69,8 +69,10 @@ describe('dashboard states', () => {
     expect(screen.getByText('6')).toBeInTheDocument()
     expect(screen.getByText('失败操作')).toBeInTheDocument()
     expect(screen.getByText('待映射门店')).toBeInTheDocument()
-    expect(screen.queryByText('待处理审计')).not.toBeInTheDocument()
-    expect(screen.queryByText('低库存商品')).not.toBeInTheDocument()
+    expect(screen.getByText('待处理审核')).toBeInTheDocument()
+    expect(screen.getByText('低库存商品')).toBeInTheDocument()
+    expect(screen.getAllByText('8')).toHaveLength(1)
+    expect(screen.getAllByText('4')).toHaveLength(1)
     expect(screen.queryByText('连接正常')).not.toBeInTheDocument()
     expect(screen.getByLabelText('运营指标')).toHaveAttribute('aria-busy', 'false')
   })
