@@ -46,15 +46,17 @@ class ProductCreateRequest(BaseModel):
     connection_id: str = Field(min_length=1, max_length=36)
     idempotency_key: str = Field(min_length=1, max_length=255)
     merchant_product_id: str = Field(min_length=1, max_length=128)
-    name: str = Field(min_length=1, max_length=200)
-    product_type: Literal["group_buying"] = "group_buying"
-    category: str | None = Field(default=None, max_length=160)
-    brand: str | None = Field(default=None, max_length=160)
+    name: str = Field(min_length=3, max_length=60)
+    product_type: Literal[
+        "group_buying", "cash_voucher", "exchange_voucher", "multi_use_card"
+    ] = "cash_voucher"
+    category: str = Field(min_length=1, max_length=160)
+    brand: str = Field(min_length=1, max_length=160)
     head_images: list[str] = Field(min_length=1, max_length=9)
     available_store_desc: str | None = Field(default=None, max_length=1000)
     verification_settings: dict[str, Any] = Field(default_factory=dict)
     code_source: Literal["wechat", "merchant"] = "wechat"
-    rules: dict[str, Any] = Field(default_factory=dict)
+    rules: dict[str, Any] = Field(min_length=1)
     skus: list[SkuCreateRequest] = Field(min_length=1, max_length=50)
 
     @field_validator("connection_id", "idempotency_key", "merchant_product_id", "name")
@@ -275,6 +277,7 @@ class OrderSyncRequest(BaseModel):
 class ConsumeVoucherRequest(BaseModel):
     store_id: str = Field(min_length=1, max_length=160)
     idempotency_key: str | None = Field(default=None, min_length=1, max_length=255)
+    reserve_no: str | None = Field(default=None, max_length=128)
 
     @field_validator("store_id")
     @classmethod
@@ -287,6 +290,14 @@ class ConsumeVoucherRequest(BaseModel):
     @field_validator("idempotency_key")
     @classmethod
     def strip_key(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+    @field_validator("reserve_no")
+    @classmethod
+    def strip_reserve_no(cls, value: str | None) -> str | None:
         if value is None:
             return None
         value = value.strip()
@@ -330,9 +341,11 @@ class AfterSaleSyncRequest(BaseModel):
 
 class AccountingSyncRequest(BaseModel):
     connection_id: str = Field(min_length=1, max_length=36)
+    product_id: str = Field(min_length=1, max_length=160)
+    bill_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
     idempotency_key: str = Field(min_length=1, max_length=255)
 
-    @field_validator("connection_id", "idempotency_key")
+    @field_validator("connection_id", "product_id", "bill_date", "idempotency_key")
     @classmethod
     def strip_nonblank(cls, value: str) -> str:
         value = value.strip()
@@ -433,6 +446,9 @@ class ReconciliationSummary(BaseModel):
     difference: int
     difference_count: int
     differences: list[dict[str, Any]]
+    linked_order_count: int = 0
+    unmatched_fund_count: int = 0
+    unmatched_bill_count: int = 0
     funds: list[dict[str, Any]] = Field(default_factory=list)
     bills: list[dict[str, Any]] = Field(default_factory=list)
 

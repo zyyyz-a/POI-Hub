@@ -111,7 +111,11 @@ async def sync_accounting(
     del csrf_context
     try:
         operation = await AccountingService(session).sync_accounting(
-            _tenant_id(context), payload.connection_id, payload.idempotency_key
+            _tenant_id(context),
+            payload.connection_id,
+            payload.product_id,
+            payload.bill_date,
+            payload.idempotency_key,
         )
     except AccountingServiceError as error:
         raise auth_error(error.code, error.message, error.status_code)

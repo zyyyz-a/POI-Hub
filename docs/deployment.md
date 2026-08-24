@@ -1,83 +1,73 @@
-# POI Hub 部署指南
+# POI Hub 中心化 SaaS 部署指南
 
-本文分别说明 Linux 和 Windows 部署流程。项目由 FastAPI API、独立后台 Worker 和 Vite 前端组成，不使用 Docker。
+本文只描述软件方统一运营的服务器部署。商户无需安装程序、数据库或内网穿透，只通过 HTTPS 浏览器访问；微信授权、腾讯地图/微信服务 POI、本地生活 API 与回调均由中央平台处理。
 
-## 一、通用准备
+## 1. 生产拓扑
 
-两种系统都需要：
+最低受控试点拓扑：
 
-- Python 3.12+
-- uv
-- Node.js 20 LTS+
-- npm
-- Git
-- 可持久化的数据目录
+- 1 个 HTTPS 负载均衡/WAF 和固定公网域名。
+- 2 个无状态 API 实例，避免发布或单机故障中断回调。
+- 2～4 个 Worker 进程，按微信配额调整并发。
+- PostgreSQL 14+；推荐受管高可用实例和持续归档备份。
+- 前端静态资源由 CDN、对象存储或 Nginx 提供。
+- 集中日志、指标与告警；生产密钥使用云密钥管理或受控 Secret 服务。
 
-生产环境必须将 APP_ENV 设置为 production，并使用随机且至少 32 个字符的 SECRET_KEY、ENCRYPTION_KEY。不要把 .env、AppSecret、EncodingAESKey 或 Access Token 提交到 Git。
+当前任务队列以 PostgreSQL 为持久协调层，不强制依赖 Redis。达到多实例高并发后，Redis 可用于全局限流、短期缓存和 token 单飞锁，但不可保存唯一的业务或账务事实。
 
-生成随机密钥：
+## 2. 生产配置
 
-~~~bash
-uv run python -c "import secrets; print(secrets.token_urlsafe(48))"
-~~~
-
-每次执行生成一组密钥，分别填入 SECRET_KEY 和 ENCRYPTION_KEY。
-
-## 二、Linux 部署
-
-以下示例使用 Ubuntu/Debian、部署目录 /opt/poi-hub、运行用户 poi。
-
-### 2.1 获取代码
-
-~~~bash
-sudo useradd --system --create-home --home-dir /opt/poi-hub --shell /usr/sbin/nologin poi
-sudo mkdir -p /opt/poi-hub
-sudo chown -R poi:poi /opt/poi-hub
-sudo -u poi git clone <你的仓库地址> /opt/poi-hub
-cd /opt/poi-hub
-~~~
-
-如果代码已存在，跳过 clone，但要确保运行用户拥有项目目录和 .data 目录的读写权限。
-
-### 2.2 安装依赖和配置环境
-
-~~~bash
-cd /opt/poi-hub
-uv sync --frozen
-cd frontend
-npm ci
-cd ..
-cp .env.example .env
-nano .env
-mkdir -p .data
-chmod 700 .data
-~~~
-
-.env 示例：
+`.env` 不得提交版本库。中央生产示例：
 
 ~~~dotenv
 APP_ENV=production
+DEPLOYMENT_MODE=saas
 APP_NAME=POI Hub
-DATABASE_URL=sqlite+aiosqlite:////opt/poi-hub/.data/poi_admin.sqlite3
-SECRET_KEY=替换为随机的32位以上字符串
-ENCRYPTION_KEY=替换为另一组随机的32位以上字符串
+DATABASE_URL=postgresql+asyncpg://poi_app:替换密码@postgres.internal:5432/poi_hub
+SECRET_KEY=替换为至少32字符的独立随机密钥
+ENCRYPTION_KEY=替换为另一组至少32字符的独立随机密钥
 LOG_LEVEL=INFO
+
+WECHAT_API_BASE_URL=https://api.weixin.qq.com
+WECHAT_HTTP_MAX_CONNECTIONS=100
+WECHAT_HTTP_MAX_KEEPALIVE_CONNECTIONS=20
+
+WORKER_CONCURRENCY=4
+WORKER_BURST_SIZE=200
+WORKER_LEASE_SECONDS=120
+WEBHOOK_MAX_ATTEMPTS=8
+
+# SaaS 收费由租户订阅和账单控制，不使用设备离线许可证。
+LICENSE_MODE=off
 ~~~
 
-### 2.3 迁移和构建
+应用会拒绝以下危险配置：
+
+- 生产 SaaS 使用 SQLite，即使设置旧版豁免变量也不能启动。
+- 生产或预发把微信 API 指向非 `https://api.weixin.qq.com` 的主机。
+- 使用默认或不足 32 字符的会话密钥、加密密钥。
+- SaaS 开启 `warn/enforce` 离线许可证模式。
+- HTTP keep-alive 上限大于总连接上限。
+
+## 3. 构建与迁移
+
+示例使用 Ubuntu/Debian、部署目录 `/opt/poi-hub`、运行用户 `poi`：
 
 ~~~bash
-uv run alembic upgrade head
+cd /opt/poi-hub
+uv sync --frozen --no-dev
 cd frontend
+npm ci
 npm run build
 cd ..
+uv run alembic upgrade head
 ~~~
 
-生产环境不要执行 uv run python -m poi_admin.seed --reset，该命令会清空数据库，仅适用于演示库或测试库。
+数据库迁移必须作为一次性发布任务执行，不能让多个 API 实例同时跑迁移。先备份、验证迁移，再滚动替换 API 和 Worker。生产禁止运行 `python -m poi_admin.seed --reset`，该命令会重建演示数据。
 
-### 2.4 创建 systemd 服务
+## 4. 进程服务
 
-创建 /etc/systemd/system/poi-hub-api.service：
+API 示例：
 
 ~~~ini
 [Unit]
@@ -92,18 +82,19 @@ WorkingDirectory=/opt/poi-hub
 EnvironmentFile=/opt/poi-hub/.env
 ExecStart=/opt/poi-hub/.venv/bin/python -m uvicorn poi_admin.main:app --app-dir /opt/poi-hub/backend --host 127.0.0.1 --port 8000
 Restart=always
-RestartSec=5
+RestartSec=3
+TimeoutStopSec=30
 
 [Install]
 WantedBy=multi-user.target
 ~~~
 
-创建 /etc/systemd/system/poi-hub-worker.service：
+Worker 示例：
 
 ~~~ini
 [Unit]
-Description=POI Hub background worker
-After=network.target poi-hub-api.service
+Description=POI Hub Worker
+After=network.target
 
 [Service]
 Type=simple
@@ -111,266 +102,70 @@ User=poi
 Group=poi
 WorkingDirectory=/opt/poi-hub
 EnvironmentFile=/opt/poi-hub/.env
-ExecStart=/opt/poi-hub/.venv/bin/python -m poi_admin.worker --poll-seconds 2
+ExecStart=/opt/poi-hub/.venv/bin/python -m poi_admin.worker
 Restart=always
-RestartSec=5
+RestartSec=3
+TimeoutStopSec=180
 
 [Install]
 WantedBy=multi-user.target
 ~~~
 
-加载并启动：
-
-~~~bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now poi-hub-api.service poi-hub-worker.service
-sudo systemctl status poi-hub-api.service poi-hub-worker.service
-~~~
-
-查看日志：
-
-~~~bash
-sudo journalctl -u poi-hub-api.service -f
-sudo journalctl -u poi-hub-worker.service -f
-~~~
-
-### 2.5 Nginx、HTTPS 和前端
-
-推荐使用 Nginx 暴露 80/443，API 和 Worker 只监听本机。核心配置如下：
-
-~~~nginx
-server {
-    listen 80;
-    server_name poi.example.com;
-    root /opt/poi-hub/frontend/dist;
-    index index.html;
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    location /callbacks/ {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-}
-~~~
+多 API 服务器使用相同构建产物和配置，但每个实例独立启动进程。Worker 已生成唯一实例 ID，不要人为设置成相同值。扩容前先核算 PostgreSQL 最大连接数：API 实例池、Worker 并发、迁移和运维连接总和必须保留安全余量。
 
-再使用 Certbot 或企业证书配置 HTTPS。真实微信回调必须使用公网 HTTPS。防火墙只开放 80/443：
+## 5. HTTPS 与微信回调
 
-~~~bash
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw enable
-~~~
+反向代理至少设置：
 
-## 三、Windows 部署
+- 仅开放 443，HTTP 永久跳转 HTTPS。
+- TLS 1.2+、自动续期证书、HSTS、请求大小限制和合理超时。
+- `/api/` 代理到 API 集群；前端路由回退到 `index.html`。
+- 保留原始请求体、查询参数和必要头部，回调验签前不得改写载荷。
+- 对登录和管理接口限速；微信回调不能用简单 IP 白名单代替签名验证。
 
-以下示例使用 D:\\Services\\POI-Hub 作为部署目录。PowerShell 5.1/7 均可。
+回调域名由软件方统一维护。每个微信连接保存独立 callback token、EncodingAESKey、AppID/授权方标识；接收后依次执行大小限制、签名验证、AES 解密、AppID 校验、指纹去重、加密落库，再由 Worker 异步处理。
 
-### 3.1 获取代码和安装依赖
+## 6. 数据库与备份
 
-~~~powershell
-New-Item -ItemType Directory -Force D:\\Services\\POI-Hub | Out-Null
-Set-Location D:\\Services\\POI-Hub
-git clone <你的仓库地址> .
-uv sync --frozen
-Set-Location frontend
-npm.cmd ci
-Set-Location ..
-~~~
+- 开启自动备份和 PostgreSQL WAL 持续归档，备份与主库使用不同故障域。
+- 至少每月恢复到隔离环境并校验租户、连接、券、操作、回调、审计和账务表。
+- 监控连接数、锁等待、慢查询、膨胀、磁盘、复制延迟和备份失败。
+- 对 sessions、operations、webhook_events、audit_logs 制定保留/归档策略，不能直接无条件删除。
+- 敏感字段密文备份仍属于敏感数据；备份介质必须加密并限制下载权限。
 
-### 3.2 创建 .env
+建议目标由合同等级决定。受控试点可先采用 RPO 15 分钟、RTO 2 小时；收费和核销规模扩大后再收紧，并用恢复演练证明，而不是只依赖云控制台显示“备份成功”。
 
-~~~powershell
-Set-Location D:\\Services\\POI-Hub
-Copy-Item .env.example .env
-notepad .env
-New-Item -ItemType Directory -Force .data | Out-Null
-~~~
+## 7. 监控和告警
 
-.env 示例：
+最低告警清单：
 
-~~~dotenv
-APP_ENV=production
-APP_NAME=POI Hub
-DATABASE_URL=sqlite+aiosqlite:///D:/Services/POI-Hub/.data/poi_admin.sqlite3
-SECRET_KEY=替换为随机的32位以上字符串
-ENCRYPTION_KEY=替换为另一组随机的32位以上字符串
-LOG_LEVEL=INFO
-~~~
+- API 5xx、P95/P99 延迟、登录失败突增和数据库池耗尽。
+- 回调验签失败、解密失败、积压数量、最老未处理时间和死信。
+- 操作队列深度、最老任务年龄、成功率、重试率、租约回收和 Worker 心跳。
+- 微信 401/token 刷新失败、429、5xx 和上游超时。
+- PostgreSQL 主库/副本、磁盘、备份、证书和域名到期。
+- 商户停用/恢复、平台管理员登录、连接密钥变化和未来的账单/支付异常。
 
-### 3.3 迁移和构建
+所有日志应包含请求 ID，并在可能时关联租户 ID、连接 ID、操作 ID、微信请求号和回调指纹；不得记录明文券码、openid、AppSecret、refresh token、完整手机号或解密后的回调整包。
 
-~~~powershell
-Set-Location D:\\Services\\POI-Hub
-uv run alembic upgrade head
-Set-Location frontend
-npm.cmd run build
-Set-Location ..
-~~~
+## 8. 发布与回滚
 
-生产环境不要执行 uv run python -m poi_admin.seed --reset。
+1. 在预发使用生产等价 PostgreSQL 跑完整迁移和回归。
+2. 备份生产库并确认可恢复点。
+3. 暂停或收敛旧 Worker，执行一次迁移任务。
+4. 滚动发布 API，检查健康、登录、租户隔离和回调接收。
+5. 滚动发布 Worker，观察队列租约、重试和微信错误率。
+6. 发布前端并做商品、POI、发券回调、核销、撤销、账单的冒烟验证。
 
-### 3.4 手动启动
+应用回滚不能盲目反向执行破坏性数据库迁移。若新旧版本数据结构不兼容，应使用前向修复迁移或从已验证备份恢复，并记录受影响的微信外部副作用。
 
-API：
+## 9. 上线前检查
 
-~~~powershell
-Set-Location D:\\Services\\POI-Hub
-& .\\.venv\\Scripts\\python.exe -m uvicorn poi_admin.main:app --app-dir backend --host 127.0.0.1 --port 8000
-~~~
-
-Worker：
-
-~~~powershell
-Set-Location D:\\Services\\POI-Hub
-& .\\.venv\\Scripts\\python.exe -m poi_admin.worker --poll-seconds 2
-~~~
-
-前端预览服务：
-
-~~~powershell
-Set-Location D:\\Services\\POI-Hub\\frontend
-npm.cmd run preview -- --host 127.0.0.1 --port 5173
-~~~
-
-上述方式适合内网或临时部署。公网环境建议使用 IIS 或 Windows Nginx 提供 HTTPS、静态文件和反向代理。
-
-### 3.5 使用任务计划程序开机启动
-
-为 API 和 Worker 分别创建任务，选择“系统启动时”触发，并勾选“无论用户是否登录都运行”。两个任务的“起始于”都设置为：
-
-~~~text
-D:\\Services\\POI-Hub
-~~~
-
-API 程序：
-
-~~~text
-D:\\Services\\POI-Hub\\.venv\\Scripts\\python.exe
-~~~
-
-API 参数：
-
-~~~text
--m uvicorn poi_admin.main:app --app-dir backend --host 127.0.0.1 --port 8000
-~~~
-
-Worker 参数：
-
-~~~text
--m poi_admin.worker --poll-seconds 2
-~~~
-
-如果使用专用服务账号，确保该账号对项目目录和 .data 目录有读写权限。IIS/反向代理需要将 /api/ 和 /callbacks/ 转发到 http://127.0.0.1:8000，并为前端路由配置回退到 index.html。
-
-## 四、升级流程
-
-升级前先备份数据库并停止 API/Worker。
-
-Linux：
-
-~~~bash
-sudo systemctl stop poi-hub-worker.service poi-hub-api.service
-cd /opt/poi-hub
-git pull
-uv sync --frozen
-uv run alembic upgrade head
-cd frontend
-npm ci
-npm run build
-cd ..
-sudo systemctl start poi-hub-api.service poi-hub-worker.service
-~~~
-
-Windows：先停止 API 和 Worker 任务，再执行：
-
-~~~powershell
-Set-Location D:\\Services\\POI-Hub
-git pull
-uv sync --frozen
-uv run alembic upgrade head
-Set-Location frontend
-npm.cmd ci
-npm.cmd run build
-Set-Location ..
-~~~
-
-然后重新启动任务。
-
-## 五、备份和健康检查
-
-停止 Worker 后备份 SQLite 文件：
-
-Linux：
-
-~~~bash
-cp /opt/poi-hub/.data/poi_admin.sqlite3 /opt/poi-hub/.data/poi_admin.sqlite3.backup
-~~~
-
-Windows：
-
-~~~powershell
-Copy-Item D:\\Services\\POI-Hub\\.data\\poi_admin.sqlite3 D:\\Services\\POI-Hub\\.data\\poi_admin.sqlite3.backup
-~~~
-
-检查 API：
-
-~~~bash
-curl http://127.0.0.1:8000/api/v1/health/live
-~~~
-
-Windows PowerShell：
-
-~~~powershell
-Invoke-RestMethod http://127.0.0.1:8000/api/v1/health/live
-~~~
-
-部署完成后至少验证：
-
-1. 登录页面可以打开。
-2. /api/v1/health/live 返回成功。
-3. Worker 能处理一条 Mock 或真实连接操作。
-4. 操作状态可以从 queued 变为 succeeded 或明确失败状态。
-5. 真实微信回调地址能够从公网访问。
-
-## 六、真实微信回调
-
-回调地址为：
-
-~~~text
-https://你的域名/api/v1/callbacks/wechat/{connection_id}
-~~~
-
-微信平台中的 Token、EncodingAESKey 必须与连接中的 callback_token、encoding_aes_key 一致。回调路径需要经过反向代理转发到 API，不能被前端 SPA 的 index.html 回退规则拦截。
-
-## 七、常见问题
-
-### 操作一直是 queued
-
-确认 Worker 正在运行，并且 API 与 Worker 使用同一个 DATABASE_URL 和同一个 .env。
-
-### 真实连接提示 credentials_missing
-
-确认 Live 连接配置了 AppID 和 AppSecret，并确认 API 与 Worker 的 ENCRYPTION_KEY 一致。
-
-### 回调返回 403
-
-检查公网 URL、Token、时间戳、Nonce、签名和 EncodingAESKey，并确认请求到达 /api/v1/callbacks/wechat/{connection_id}。
-
-### Windows 服务启动后退出
-
-确认任务的“起始于”设置为项目根目录，并使用项目 .venv\\Scripts\\python.exe，而不是系统 Python。
-
+- [ ] `DEPLOYMENT_MODE=saas`，PostgreSQL 连接启用 TLS 和最小权限账号。
+- [ ] 至少两台 API 和多个 Worker，无共享本地磁盘依赖。
+- [ ] 公网 HTTPS、证书续期、WAF、回调签名/AES 验证通过。
+- [ ] 微信各商户权限、授权刷新、取消授权和 token 失效流程已演练。
+- [ ] 备份恢复、数据库切换、Worker 强杀和回调重放已演练。
+- [ ] 总部商户停用/恢复权限仅授予平台管理员并进入审计日志。
+- [ ] 消费者货款与软件服务费账务完全分开。
+- [ ] 自动收费上线前已完成订阅、用量、账单、支付、退款/冲正台账和合同审核。

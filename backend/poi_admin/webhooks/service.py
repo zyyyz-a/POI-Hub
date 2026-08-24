@@ -10,7 +10,11 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from poi_admin.connections.crypto import decrypt_secret_bundle, redact_secrets
+from poi_admin.connections.crypto import (
+    decrypt_secret_bundle,
+    encrypt_secret_bundle,
+    redact_secrets,
+)
 from poi_admin.connections.models import WeChatConnection
 from poi_admin.core.config import Settings
 
@@ -67,13 +71,13 @@ class WebhookService:
         self, connection_id: str, payload: dict[str, Any]
     ) -> tuple[WebhookEvent, bool]:
         connection = await self.connection(connection_id)
+        full_canonical = json.dumps(
+            payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
+        )
+        fingerprint = hashlib.sha256(full_canonical.encode("utf-8")).hexdigest()
         safe = redact_secrets(payload)
         if not isinstance(safe, dict):
             safe = {"payload": safe}
-        canonical = json.dumps(
-            safe, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
-        )
-        fingerprint = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         existing = (
             await self.session.execute(
                 select(WebhookEvent).where(
@@ -90,6 +94,8 @@ class WebhookService:
             fingerprint=fingerprint,
             event_type=str(payload.get("Event", payload.get("event", "unknown"))),
             payload=safe,
+            encrypted_payload=encrypt_secret_bundle(payload, self.settings.encryption_key),
+            max_attempts=self.settings.webhook_max_attempts,
         )
         self.session.add(row)
         try:
@@ -119,10 +125,14 @@ class WebhookService:
         ).scalar_one_or_none()
         if event is None:
             raise WebhookServiceError("webhook_not_found", "回调事件不存在", 404)
-        if event.status not in {"failed", "received"}:
+        if event.status not in {"failed", "retry_wait", "dead_letter", "received"}:
             raise WebhookServiceError("webhook_not_retryable", "该回调已处理完成", 409)
         event.status = "received"
+        event.attempt_count = 0
+        event.next_attempt_at = event.received_at
         event.error_message = None
+        event.worker_id = None
+        event.lease_expires_at = None
         await self.session.commit()
         await self.session.refresh(event)
         return event

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import cast
 
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from poi_admin.connections.models import WeChatConnection
@@ -28,7 +29,10 @@ POI_AUDIT_COMMAND = "service_poi.audit_status"
 
 
 def store_operation_handlers(
-    session: AsyncSession, settings: Settings
+    session: AsyncSession,
+    settings: Settings,
+    *,
+    http_client: httpx.AsyncClient | None = None,
 ) -> dict[str, Handler]:
     service = StoreService(session)
 
@@ -40,7 +44,9 @@ def store_operation_handlers(
             raise GatewayTerminalError(
                 "POI operation connection is missing", code="connection_not_found"
             )
-        connection_service = ConnectionService(session, settings)
+        connection_service = ConnectionService(
+            session, settings, http_client=http_client
+        )
         connection = await connection_service.get(operation.tenant_id, connection_id)
         if connection is None:
             raise GatewayTerminalError(

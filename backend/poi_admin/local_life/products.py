@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any, cast
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -127,9 +130,13 @@ class ProductService:
         existing = await operation_service.get_by_idempotency_key(
             tenant_id, request.idempotency_key
         )
+        request_fingerprint = _request_fingerprint(request)
         if existing is not None:
             return await self._existing_product_operation(
-                tenant_id, existing, CREATE_PRODUCT_COMMAND
+                tenant_id,
+                existing,
+                CREATE_PRODUCT_COMMAND,
+                expected_request_fingerprint=request_fingerprint,
             )
 
         connection = (
@@ -180,7 +187,10 @@ class ProductService:
                 tenant_id,
                 CREATE_PRODUCT_COMMAND,
                 request.idempotency_key,
-                {"product_id": product.id},
+                {
+                    "product_id": product.id,
+                    "request_fingerprint": request_fingerprint,
+                },
                 connection_id=connection.id,
                 resource_ref=f"local_product:{product.id}",
             )
@@ -204,9 +214,14 @@ class ProductService:
         existing = await operation_service.get_by_idempotency_key(
             tenant_id, request.idempotency_key
         )
+        request_fingerprint = _request_fingerprint(request)
         if existing is not None:
             return await self._existing_product_operation(
-                tenant_id, existing, command, expected_product_id=product_id
+                tenant_id,
+                existing,
+                command,
+                expected_product_id=product_id,
+                expected_request_fingerprint=request_fingerprint,
             )
 
         product = await self.get_product(tenant_id, product_id)
@@ -240,6 +255,7 @@ class ProductService:
                 "source_status": current.value,
                 "target_status": target.value,
                 "target_version": product.version,
+                "request_fingerprint": request_fingerprint,
             },
             connection_id=product.connection_id,
             resource_ref=f"local_product:{product.id}",
@@ -257,6 +273,7 @@ class ProductService:
             if (
                 existing.command_type != SET_STOCK_COMMAND
                 or existing.payload.get("sku_id") != sku_id
+                or existing.payload.get("stock") != request.stock
             ):
                 raise ProductServiceError("idempotency_key_conflict", "幂等键已用于其他操作", 409)
             existing_sku = await self.get_sku(tenant_id, sku_id)
@@ -386,12 +403,19 @@ class ProductService:
         expected_command: str,
         *,
         expected_product_id: str | None = None,
+        expected_request_fingerprint: str | None = None,
     ) -> tuple[LocalProduct, IntegrationOperation]:
         product_id = operation.payload.get("product_id")
+        existing_fingerprint = operation.payload.get("request_fingerprint")
         if (
             operation.command_type != expected_command
             or not isinstance(product_id, str)
             or (expected_product_id is not None and product_id != expected_product_id)
+            or (
+                expected_request_fingerprint is not None
+                and existing_fingerprint is not None
+                and existing_fingerprint != expected_request_fingerprint
+            )
         ):
             raise ProductServiceError("idempotency_key_conflict", "幂等键已用于其他操作", 409)
         product = await self.get_product(tenant_id, product_id)
@@ -400,6 +424,12 @@ class ProductService:
                 "idempotency_resource_missing", "幂等操作对应的商品不存在", 409
             )
         return product, operation
+
+
+def _request_fingerprint(request: ProductCreateRequest | ProductUpdateRequest) -> str:
+    body = request.model_dump(exclude={"idempotency_key"}, mode="json", exclude_unset=True)
+    canonical = json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _product_payload(product: LocalProduct) -> dict[str, Any]:
@@ -440,6 +470,7 @@ def product_operation_handlers(
     settings: Settings | None = None,
     *,
     gateway_override: LocalLifeGateway | None = None,
+    http_client: httpx.AsyncClient | None = None,
 ) -> dict[str, Handler]:
     service = ProductService(session)
 
@@ -467,7 +498,9 @@ def product_operation_handlers(
             raise GatewayTerminalError(
                 "gateway settings are missing", code="gateway_not_configured"
             )
-        connection_service = ConnectionService(session, settings)
+        connection_service = ConnectionService(
+            session, settings, http_client=http_client
+        )
         connection = await connection_service.get(operation.tenant_id, product.connection_id)
         if connection is None:
             raise GatewayTerminalError("connection was not found", code="connection_not_found")

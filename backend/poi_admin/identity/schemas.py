@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -46,6 +47,10 @@ class TenantCreateRequest(BaseModel):
         if not SLUG_PATTERN.fullmatch(value):
             raise ValueError("租户标识只能包含小写字母、数字和连字符")
         return value
+
+
+class TenantStatusUpdateRequest(BaseModel):
+    status: Literal["active", "suspended"]
 
 
 class InvitationCreateRequest(BaseModel):
@@ -142,6 +147,7 @@ __all__ = [
     "MembershipResponse",
     "TenantCreateRequest",
     "TenantResponse",
+    "TenantStatusUpdateRequest",
     "TenantSwitchRequest",
     "UserResponse",
     "normalize_email",

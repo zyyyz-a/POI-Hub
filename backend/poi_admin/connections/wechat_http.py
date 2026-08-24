@@ -29,8 +29,16 @@ class WeChatHttpClient:
         self.timeout = timeout
         self.max_response_bytes = max_response_bytes
 
-    async def post_json(self, path: str, body: Mapping[str, Any] | None = None) -> dict[str, Any]:
-        return await self._request("POST", path, body or {})
+    async def post_json(
+        self,
+        path: str,
+        body: Mapping[str, Any] | None = None,
+        *,
+        accepted_error_codes: frozenset[int] = frozenset(),
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST", path, body or {}, accepted_error_codes=accepted_error_codes
+        )
 
     async def get_json(
         self, path: str, *, params: Mapping[str, Any] | None = None
@@ -44,12 +52,15 @@ class WeChatHttpClient:
         body: Mapping[str, Any] | None,
         *,
         params: Mapping[str, Any] | None = None,
+        accepted_error_codes: frozenset[int] = frozenset(),
     ) -> dict[str, Any]:
         token = await self.token_provider.get_token()
         result = await self._send(method, path, body, token=token, params=params)
         if _error_code(result) in TOKEN_ERROR_CODES:
             token = await self.token_provider.get_token(force_refresh=True)
             result = await self._send(method, path, body, token=token, params=params)
+        if _error_code(result) in accepted_error_codes:
+            return result
         return _check_result(result)
 
     async def _send(

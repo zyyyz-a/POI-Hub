@@ -51,7 +51,12 @@ async def test_accounting_sync_route_then_worker_persists_entries_and_reconcilia
     accepted = await client.post(
         "/api/v1/local-life/accounting/sync",
         headers={"X-Tenant-ID": tenant_id, "X-CSRF-Token": csrf},
-        json={"connection_id": connection_id, "idempotency_key": "account-route-sync-1"},
+        json={
+            "connection_id": connection_id,
+            "product_id": "product-1",
+            "bill_date": "2026-08-24",
+            "idempotency_key": "account-route-sync-1",
+        },
     )
     assert accepted.status_code == 202
     operation_id = accepted.json()["operation"]["id"]
@@ -98,7 +103,7 @@ async def test_accounting_sync_route_then_worker_persists_entries_and_reconcilia
     assert funds_response.json()[0]["amount"] == bills_response.json()[0]["amount"] == 9900
     assert reconciliation.json()["fund_count"] == reconciliation.json()["bill_count"] == 1
     assert reconciliation.json()["difference"] == 0
-    assert reconciliation.json()["difference_count"] == 2
+    assert reconciliation.json()["difference_count"] == 0
 
 
 @pytest.mark.asyncio

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 from sqlalchemy import create_engine, inspect, text
@@ -13,12 +14,14 @@ def _upgrade(database_path: Path) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["DATABASE_URL"] = f"sqlite+aiosqlite:///{database_path.as_posix()}"
     return subprocess.run(
-        ["uv", "run", "alembic", "upgrade", "head"],
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=Path(__file__).resolve().parents[1],
         env=env,
         check=False,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
 
 
@@ -60,10 +63,14 @@ def test_fresh_database_can_run_real_alembic_upgrade_and_is_idempotent(tmp_path:
             revision = connection.execute(
                 text("select version_num from alembic_version")
             ).scalar_one()
-            assert revision == "0008_audit"
+            assert revision == "0010_wechat_contracts"
         assert any(
             index["name"] == "ix_operation_claimable"
             for index in inspector.get_indexes("integration_operations")
+        )
+        assert any(
+            index["name"] == "ix_webhook_claimable"
+            for index in inspector.get_indexes("webhook_events")
         )
         constraints = inspector.get_unique_constraints("local_orders")
         assert any(item["name"] == "uq_local_order_external_id" for item in constraints)

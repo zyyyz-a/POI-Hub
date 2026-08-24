@@ -126,6 +126,57 @@ async def test_acceptance_rejects_suspended_tenant(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_platform_admin_can_suspend_and_restore_tenant(client: AsyncClient) -> None:
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@example.com", "password": "correct-horse-battery-staple"},
+    )
+    csrf = login.cookies["poi_csrf"]
+    created = await client.post(
+        "/api/v1/platform/tenants",
+        headers={"X-CSRF-Token": csrf},
+        json={"name": "主控状态租户", "slug": "controlled-status"},
+    )
+    tenant_id = created.json()["id"]
+
+    suspended = await client.patch(
+        f"/api/v1/platform/tenants/{tenant_id}/status",
+        headers={"X-CSRF-Token": csrf},
+        json={"status": "suspended"},
+    )
+    assert suspended.status_code == 200
+    assert suspended.json()["status"] == "suspended"
+
+    blocked = await client.get("/api/v1/dashboard", headers={"X-Tenant-ID": tenant_id})
+    assert blocked.status_code == 404
+    assert blocked.json()["detail"]["code"] == "tenant_not_found"
+
+    restored = await client.patch(
+        f"/api/v1/platform/tenants/{tenant_id}/status",
+        headers={"X-CSRF-Token": csrf},
+        json={"status": "active"},
+    )
+    assert restored.status_code == 200
+    assert restored.json()["status"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_tenant_member_cannot_use_platform_status_control(client: AsyncClient) -> None:
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "operator@example.com", "password": "operator-password"},
+    )
+    tenant_id = login.json()["tenants"][0]["tenant_id"]
+    response = await client.patch(
+        f"/api/v1/platform/tenants/{tenant_id}/status",
+        headers={"X-Tenant-ID": tenant_id, "X-CSRF-Token": login.cookies["poi_csrf"]},
+        json={"status": "suspended"},
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "permission_denied"
+
+
+@pytest.mark.asyncio
 async def test_multiple_memberships_require_explicit_tenant_selection(client: AsyncClient) -> None:
     database = client._transport.app.state.database  # type: ignore[attr-defined]
     async with database.session_factory() as session:

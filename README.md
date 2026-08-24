@@ -1,6 +1,6 @@
 # POI Hub
 
-微信团购本地生活与服务 POI 的多租户后台管理系统。后端使用 FastAPI、SQLAlchemy、SQLite；前端使用 React、TypeScript、Vite。默认使用 Mock 连接，不需要 Docker 或外部服务。
+微信小店本地生活与微信服务 POI 的中心化多租户 SaaS。后端使用 FastAPI、SQLAlchemy 和 PostgreSQL（本地开发可用 SQLite）；前端使用 React、TypeScript、Vite。开发环境默认使用 Mock 微信连接，不需要 Docker。
 
 ## 本地运行
 
@@ -11,6 +11,13 @@
 5. 分别运行 scripts/dev-api.ps1、scripts/dev-worker.ps1、scripts/dev-web.ps1
 
 浏览器访问 http://127.0.0.1:5173。演示账号：admin@example.com / correct-horse-battery-staple。数据保存在 .data/poi_admin.sqlite3。
+
+## 商业化部署边界
+
+- 默认商业形态是软件方统一运营的中心化 SaaS：`DEPLOYMENT_MODE=saas`、PostgreSQL、多 API/Worker；商户只登录使用，不安装本地节点。
+- 总部“商户主控”可停用或恢复租户；停用后商户成员不能继续访问业务接口，数据和审计记录保留。
+- Worker 支持并发槽、队列突发抽取、租约续期、回调退避/死信和批量人工重试。
+- 消费者付款继续由微信小店承载，软件服务费走独立的商户订阅/账单/收款闭环。详见 [中心化 SaaS 收费方案](docs/central-saas-business-model.md)、[商业化对抗性审查](docs/commercial-adversarial-review.md) 与 [服务器部署指南](docs/deployment.md)。
 
 ## 验证
 

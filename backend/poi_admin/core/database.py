@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import Request
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -59,11 +59,33 @@ def create_engine(settings: Settings) -> AsyncEngine:
     """Build an async engine for settings."""
 
     ensure_database_directory(settings.database_url)
-    return create_async_engine(
+    url = make_url(settings.database_url)
+    connect_args: dict[str, object] = {}
+    if url.drivername.startswith("sqlite"):
+        connect_args["timeout"] = settings.sqlite_busy_timeout_ms / 1000
+    engine = create_async_engine(
         settings.database_url,
         future=True,
         pool_pre_ping=True,
+        connect_args=connect_args,
     )
+    if url.drivername.startswith("sqlite"):
+        _configure_sqlite(engine, settings.sqlite_busy_timeout_ms)
+    return engine
+
+
+def _configure_sqlite(engine: AsyncEngine, busy_timeout_ms: int) -> None:
+    """Enable integrity and bounded write-wait behavior on every SQLite connection."""
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def set_sqlite_pragmas(dbapi_connection: object, _connection_record: object) -> None:
+        cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
+        try:
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.execute(f"PRAGMA busy_timeout={busy_timeout_ms}")
+            cursor.execute("PRAGMA journal_mode=WAL")
+        finally:
+            cursor.close()
 
 
 def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:

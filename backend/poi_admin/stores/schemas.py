@@ -128,11 +128,52 @@ class PoiCreateRequest(BaseModel):
     photo: str | None = Field(default=None, max_length=1000)
     license: str | None = Field(default=None, max_length=1000)
     description: str | None = Field(default=None, max_length=1000)
+    districtid: int | None = Field(default=None, gt=0)
+    map_poi_id: str | None = Field(default=None, max_length=160)
+    pic_list: list[str] | None = Field(default=None, min_length=1, max_length=20)
+    contract_phone: str | None = Field(default=None, max_length=64)
+    hour: str | None = Field(default=None, max_length=160)
+    credential: str | None = Field(default=None, max_length=160)
+    company_name: str | None = Field(default=None, max_length=200)
+    card_id: str | None = Field(default=None, max_length=160)
+    qualification_list: list[str] | None = Field(default=None, max_length=5)
 
     @field_validator("name", "address", mode="before")
     @classmethod
     def strip_required_fields(cls, value: object) -> object:
         return _strip_required(value)
+
+    @model_validator(mode="after")
+    def validate_submission_stage(self) -> PoiCreateRequest:
+        if self.map_poi_id:
+            required: dict[str, object] = {
+                "pic_list": self.pic_list,
+                "contract_phone": self.contract_phone,
+                "hour": self.hour,
+                "credential": self.credential,
+            }
+            missing = [name for name, value in required.items() if not value]
+            if missing:
+                raise ValueError("绑定微信门店缺少字段: " + ", ".join(missing))
+            return self
+
+        required = {
+            "province": self.province,
+            "city": self.city,
+            "district": self.district,
+            "latitude": self.latitude,
+            "longitude": self.longitude,
+            "category": self.category,
+            "telephone": self.telephone,
+            "photo": self.photo,
+            "license": self.license,
+            "description": self.description,
+            "districtid": self.districtid,
+        }
+        missing = [name for name, value in required.items() if value in (None, "")]
+        if missing:
+            raise ValueError("创建腾讯地图点位缺少字段: " + ", ".join(missing))
+        return self
 
 
 class PoiUpdateRequest(BaseModel):

@@ -8,7 +8,12 @@ from poi_admin.connections.models import WeChatConnection
 from poi_admin.connections.ports import Capability, ConnectionMode, GatewayTransientError
 from poi_admin.identity.models import Tenant
 from poi_admin.operations.models import OperationStatus
-from poi_admin.operations.service import backoff_seconds, classify_error
+from poi_admin.operations.service import (
+    IdempotencyConflictError,
+    OperationService,
+    backoff_seconds,
+    classify_error,
+)
 from poi_admin.operations.worker import OperationWorker
 
 
@@ -17,6 +22,15 @@ async def test_duplicate_idempotency_key_returns_existing(operation_service, ten
     first = await operation_service.enqueue(tenant.id, "sync_pois", "sync:pois:1", {})
     second = await operation_service.enqueue(tenant.id, "sync_pois", "sync:pois:1", {})
     assert second.id == first.id
+
+
+@pytest.mark.asyncio
+async def test_idempotency_key_reuse_rejects_different_request(operation_service, tenant) -> None:
+    await operation_service.enqueue(tenant.id, "sync_pois", "sync:conflict", {"page": 1})
+    with pytest.raises(IdempotencyConflictError, match="幂等键"):
+        await operation_service.enqueue(
+            tenant.id, "sync_pois", "sync:conflict", {"page": 2}
+        )
 
 
 @pytest.mark.asyncio
@@ -36,6 +50,46 @@ async def test_claim_lease_and_manual_retry(operation_service, tenant) -> None:
 
 
 @pytest.mark.asyncio
+async def test_worker_can_renew_owned_lease(operation_service, tenant) -> None:
+    operation = await operation_service.enqueue(tenant.id, "sync", "lease:renew", {})
+    claimed = await operation_service.claim("worker-a", lease_seconds=30)
+    assert claimed is not None
+    original_expiry = claimed.lease_expires_at
+    assert await operation_service.renew_lease(
+        operation.id, "worker-a", lease_seconds=120
+    )
+    assert not await operation_service.renew_lease(
+        operation.id, "worker-b", lease_seconds=120
+    )
+    refreshed = await operation_service.get(tenant.id, operation.id)
+    assert refreshed is not None
+    assert refreshed.lease_expires_at is not None
+    assert original_expiry is not None
+    assert refreshed.lease_expires_at > original_expiry
+
+
+@pytest.mark.asyncio
+async def test_batch_retry_returns_per_item_outcomes(operation_service, tenant) -> None:
+    failed = await operation_service.enqueue(tenant.id, "sync", "batch:failed", {})
+    claimed = await operation_service.claim("worker-a")
+    assert claimed is not None
+    await operation_service.mark_failed(
+        claimed, code="terminal", message="failed", retryable=False
+    )
+    queued = await operation_service.enqueue(tenant.id, "sync", "batch:queued", {})
+
+    results = await operation_service.manual_retry_many(
+        tenant.id, [failed.id, queued.id, "missing", failed.id]
+    )
+
+    assert [(item.operation_id, item.accepted, item.reason) for item in results] == [
+        (failed.id, True, None),
+        (queued.id, False, "operation_not_retryable"),
+        ("missing", False, "operation_not_found"),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_operation_diagnostics_are_redacted(operation_service, tenant) -> None:
     operation = await operation_service.enqueue(
         tenant.id, "sync", "redact:1", {"access_token": "secret", "name": "safe"}
@@ -46,6 +100,42 @@ async def test_operation_diagnostics_are_redacted(operation_service, tenant) -> 
     refreshed = await operation_service.get(tenant.id, operation.id)
     assert refreshed is not None
     assert refreshed.response_summary == {"phone": "[REDACTED]"}
+
+
+@pytest.mark.asyncio
+async def test_encrypted_operation_payload_is_decrypted_only_for_handler(
+    operation_service, tenant, test_settings
+) -> None:
+    secure_service = OperationService(
+        operation_service.session, test_settings.encryption_key
+    )
+    operation = await secure_service.enqueue(
+        tenant.id,
+        "secure",
+        "secure:payload:1",
+        {"contract_phone": "13800138000", "name": "门店"},
+    )
+    assert operation.payload["contract_phone"] == "[REDACTED]"
+    assert operation.encrypted_payload is not None
+    assert "13800138000" not in operation.encrypted_payload
+    received: dict[str, object] = {}
+
+    async def handler(item):
+        received.update(item.payload)
+        return {"ok": True}
+
+    worker = OperationWorker(
+        operation_service.session,
+        settings=test_settings,
+        handlers={"secure": handler},
+    )
+    completed = await worker.run_once()
+
+    assert completed is not None and completed.status == OperationStatus.SUCCEEDED
+    assert received["contract_phone"] == "13800138000"
+    refreshed = await secure_service.get(tenant.id, operation.id)
+    assert refreshed is not None
+    assert refreshed.payload["contract_phone"] == "[REDACTED]"
 
 
 def test_retry_classification_and_bounded_backoff() -> None:

@@ -118,14 +118,35 @@ class LocalLifeGateway(Protocol):
 
     async def get_order(self, external_id: str) -> OrderResult: ...
 
-    async def list_vouchers(self, order_id: str | None = None) -> list[VoucherResult]: ...
+    async def list_vouchers(
+        self,
+        openid: str,
+        *,
+        status: int | None = None,
+        cursor: str | None = None,
+    ) -> list[VoucherResult]: ...
 
-    async def get_voucher(self, external_id: str) -> VoucherResult: ...
+    async def get_voucher(self, external_id: str, *, sku_id: str) -> VoucherResult: ...
 
-    async def consume_voucher(self, external_id: str, *, out_store_id: str) -> VoucherResult: ...
+    async def consume_voucher(
+        self,
+        external_id: str,
+        *,
+        sku_id: str,
+        consume_request_no: str,
+        out_store_id: str,
+        consume_store_name: str | None = None,
+        consume_channel: int = 2,
+        reserve_no: str | None = None,
+    ) -> VoucherResult: ...
 
     async def revoke_consumption(
-        self, external_id: str, *, out_store_id: str | None = None
+        self,
+        external_id: str,
+        *,
+        sku_id: str,
+        revoke_request_no: str,
+        consume_request_no: str | None = None,
     ) -> VoucherResult: ...
 
     async def get_after_sale(self, external_id: str) -> dict[str, Any]: ...
@@ -135,7 +156,7 @@ class LocalLifeGateway(Protocol):
     ) -> tuple[list[dict[str, Any]], str | None]: ...
 
     async def list_bills(
-        self, cursor: str | None = None
+        self, product_id: str, bill_date: str, cursor: str | None = None
     ) -> tuple[list[dict[str, Any]], str | None]: ...
 
 

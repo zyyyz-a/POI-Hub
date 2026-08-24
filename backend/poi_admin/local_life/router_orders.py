@@ -141,6 +141,7 @@ async def consume_voucher(
             voucher_id,
             payload.store_id,
             payload.idempotency_key or f"consume:{voucher_id}:{payload.store_id}",
+            reserve_no=payload.reserve_no,
         )
     except VoucherServiceError as error:
         _raise(error)

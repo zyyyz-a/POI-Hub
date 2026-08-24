@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 import httpx
 import pytest
@@ -10,6 +11,7 @@ from poi_admin.connections.ports import GatewayTerminalError, GatewayTransientEr
 from poi_admin.connections.tokens import (
     StaticTokenProvider,
     WeChatAccessTokenProvider,
+    WeChatAuthorizerTokenProvider,
     token_provider_from_secrets,
 )
 from poi_admin.connections.wechat_http import WeChatHttpClient
@@ -94,6 +96,42 @@ def test_token_provider_factory_prefers_static_token_and_requires_live_credentia
     with pytest.raises(GatewayTerminalError) as missing:
         token_provider_from_secrets(None, {})
     assert missing.value.code == "credentials_missing"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_authorizer_token_provider_refreshes_component_authorization() -> None:
+    route = respx.post(
+        "https://api.weixin.qq.com/cgi-bin/component/api_authorizer_token"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "authorizer_access_token": "authorizer-new",
+                "authorizer_refresh_token": "refresh-new",
+                "expires_in": 3600,
+            },
+        )
+    )
+    provider = token_provider_from_secrets(
+        "wx-authorizer",
+        {
+            "authorizer_refresh_token": "refresh-old",
+            "component_app_id": "wx-component",
+            "component_access_token": "component-token",
+        },
+    )
+
+    assert isinstance(provider, WeChatAuthorizerTokenProvider)
+    assert await provider.get_token() == "authorizer-new"
+    assert await provider.get_token() == "authorizer-new"
+    assert route.call_count == 1
+    assert route.calls[0].request.url.params["component_access_token"] == "component-token"
+    assert json.loads(route.calls[0].request.content) == {
+        "component_appid": "wx-component",
+        "authorizer_appid": "wx-authorizer",
+        "authorizer_refresh_token": "refresh-old",
+    }
 
 
 class RecordingTokenProvider:

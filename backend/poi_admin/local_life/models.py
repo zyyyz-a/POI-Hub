@@ -15,6 +15,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -195,7 +196,7 @@ class LocalOrder(Base):
 
 
 class LocalVoucher(Base):
-    """Voucher mirror that deliberately stores only a masked code."""
+    """Voucher mirror with encrypted operational code and masked presentation."""
 
     __tablename__ = "local_vouchers"
     __table_args__ = (
@@ -216,6 +217,7 @@ class LocalVoucher(Base):
         ForeignKey("local_orders.id", ondelete="SET NULL"), nullable=True, index=True
     )
     external_voucher_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    code_ciphertext: Mapped[str | None] = mapped_column(Text, nullable=True)
     external_product_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
     external_sku_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
     code_masked: Mapped[str] = mapped_column(String(160), nullable=False, default="")
@@ -223,6 +225,7 @@ class LocalVoucher(Base):
     valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     consume_store_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    last_consume_request_no: Mapped[str | None] = mapped_column(String(128), nullable=True)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     raw_summary: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)

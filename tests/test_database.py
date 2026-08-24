@@ -28,3 +28,17 @@ async def test_get_session_can_be_used_as_fastapi_dependency(test_settings) -> N
 
     assert response.status_code == 200
     assert response.json() == {"value": 1}
+
+
+@pytest.mark.asyncio
+async def test_sqlite_engine_enforces_integrity_and_write_wait(test_settings) -> None:
+    application = create_app(test_settings)
+    async with application.router.lifespan_context(application):
+        async with application.state.database.engine.connect() as connection:
+            foreign_keys = await connection.scalar(text("PRAGMA foreign_keys"))
+            journal_mode = await connection.scalar(text("PRAGMA journal_mode"))
+            busy_timeout = await connection.scalar(text("PRAGMA busy_timeout"))
+
+    assert foreign_keys == 1
+    assert str(journal_mode).casefold() == "wal"
+    assert busy_timeout == test_settings.sqlite_busy_timeout_ms

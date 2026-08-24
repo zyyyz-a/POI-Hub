@@ -28,7 +28,9 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["connection_id"], ["wechat_connections.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("connection_id", "fingerprint", name="uq_webhook_connection_fingerprint"),
+        sa.UniqueConstraint(
+            "connection_id", "fingerprint", name="uq_webhook_connection_fingerprint"
+        ),
     )
     op.create_index("ix_webhook_events_tenant_id", "webhook_events", ["tenant_id"])
     op.create_index("ix_webhook_events_connection_id", "webhook_events", ["connection_id"])

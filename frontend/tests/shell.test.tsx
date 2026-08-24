@@ -28,7 +28,7 @@ describe('application shell', () => {
     expect(screen.queryByText('成员管理')).not.toBeInTheDocument()
     expect(screen.getByText('门店管理')).toBeInTheDocument()
     expect(screen.getByText('页面内容')).toBeInTheDocument()
-    expect(screen.getByText('模拟环境')).toBeInTheDocument()
+    expect(screen.getByText('中央 SaaS 服务')).toBeInTheDocument()
   })
 
   it('shows member administration to tenant administrators', () => {

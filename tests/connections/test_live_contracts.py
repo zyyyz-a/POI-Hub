@@ -22,7 +22,14 @@ async def test_local_life_gateway_covers_all_documented_operations() -> None:
     routes = {
         "add": respx.post("https://api.weixin.qq.com/channels/ec/product/locallife/add").mock(
             return_value=_reply(
-                {"data": {"product_id": "p-1", "product_name": "套餐", "status": 0}}
+                {
+                    "data": {
+                        "product_id": "p-1",
+                        "product_name": "套餐",
+                        "status": 0,
+                        "sku_ids": ["sku-1"],
+                    }
+                }
             )
         ),
         "update": respx.post("https://api.weixin.qq.com/channels/ec/product/locallife/update").mock(
@@ -70,10 +77,12 @@ async def test_local_life_gateway_covers_all_documented_operations() -> None:
             return_value=_reply({"voucher": {"code": "v-1", "status": 1}})
         ),
         "consume": respx.post("https://api.weixin.qq.com/channels/ec/voucher/consume").mock(
-            return_value=_reply({"voucher": {"code": "v-1", "status": 2, "out_store_id": "s-1"}})
+            return_value=_reply(
+                {"voucher_list": [{"code": "v-1", "status": 2, "out_store_id": "s-1"}]}
+            )
         ),
         "revoke": respx.post("https://api.weixin.qq.com/channels/ec/voucher/revoke").mock(
-            return_value=_reply({"voucher": {"code": "v-1", "status": 1}})
+            return_value=_reply({"voucher_list": [{"code": "v-1", "status": 1}]})
         ),
         "after_sale": respx.post(
             "https://api.weixin.qq.com/channels/ec/aftersale/getaftersaleorder"
@@ -87,19 +96,20 @@ async def test_local_life_gateway_covers_all_documented_operations() -> None:
     }
     gateway = LiveLocalLifeGateway(StaticTokenProvider("access"))
 
-    created = await gateway.create_product(
-        {
-            "merchant_product_id": "merchant-1",
-            "name": "套餐",
-            "category": "cat",
-            "brand": "brand",
-            "head_images": ["https://img"],
-            "verification_settings": {"need": True},
-            "skus": [{"sku_id": "sku-1"}],
-        }
-    )
-    updated = await gateway.update_product("p-1", {"name": "updated", "category": "cat"})
-    free = await gateway.audit_free_update_product("p-1", {"name": "free"})
+    product_payload = {
+        "merchant_product_id": "merchant-1",
+        "name": "套餐",
+        "product_type": "cash_voucher",
+        "category": "cat",
+        "brand": "brand",
+        "head_images": ["https://img"],
+        "code_source": "wechat",
+        "rules": {"refund_policy": "1"},
+        "skus": [{"merchant_sku_id": "merchant-sku-1", "sale_price": 9900}],
+    }
+    created = await gateway.create_product(product_payload)
+    updated = await gateway.update_product("p-1", {**product_payload, "name": "updated"})
+    free = await gateway.audit_free_update_product("p-1", {**product_payload, "name": "free"})
     fetched = await gateway.get_product("p-1")
     products, next_cursor = await gateway.list_products("cursor")
     await gateway.delete_product("p-1")
@@ -109,13 +119,25 @@ async def test_local_life_gateway_covers_all_documented_operations() -> None:
     stock = await gateway.update_stock("p-1", "sku-1", 8)
     uploaded = await gateway.upload_voucher_codes("p-1", "sku-1", ["A", "B"])
     order = await gateway.get_order("order-1")
-    vouchers = await gateway.list_vouchers("order-1")
-    voucher = await gateway.get_voucher("v-1")
-    consumed = await gateway.consume_voucher("v-1", out_store_id="s-1")
-    revoked = await gateway.revoke_consumption("v-1", out_store_id="s-1")
+    vouchers = await gateway.list_vouchers("openid-1", status=1, cursor="voucher-cursor")
+    voucher = await gateway.get_voucher("v-1", sku_id="sku-1")
+    consumed = await gateway.consume_voucher(
+        "v-1",
+        sku_id="sku-1",
+        consume_request_no="consume-1",
+        out_store_id="s-1",
+        consume_store_name="西湖门店",
+        reserve_no="reserve-1",
+    )
+    revoked = await gateway.revoke_consumption(
+        "v-1",
+        sku_id="sku-1",
+        revoke_request_no="revoke-1",
+        consume_request_no="consume-1",
+    )
     after_sale = await gateway.get_after_sale("a-1")
     funds, funds_cursor = await gateway.list_funds("f-cursor")
-    bills, bills_cursor = await gateway.list_bills("b-cursor")
+    bills, bills_cursor = await gateway.list_bills("p-1", "2026-08-24", "b-cursor")
 
     assert created.external_id == fetched.external_id == "p-1"
     assert updated.name == "updated" and free.name == "free"
@@ -135,12 +157,10 @@ async def test_local_life_gateway_covers_all_documented_operations() -> None:
         "category_id": "cat",
         "brand_id": "brand",
         "head_imgs": ["https://img"],
-        "product_qua_infos": [],
-        "verify_page": {"need": True},
         "verify_at_store": 1,
         "code_source_type": 1,
-        "attr_kv_map": {},
-        "skus": [{"sku_id": "sku-1"}],
+        "attr_kv_map": {"refund_policy": "1"},
+        "skus": [{"sale_price": 9900}],
     }
     assert json.loads(routes["list"].calls[0].request.content) == {
         "status": 0,
@@ -154,19 +174,24 @@ async def test_local_life_gateway_covers_all_documented_operations() -> None:
     assert json.loads(routes["update"].calls[0].request.content) == {
         "product_id": "p-1",
         "product_name": "updated",
+        "out_product_id": "merchant-1",
         "product_type": 1,
         "category_id": "cat",
-        "head_imgs": [],
-        "attr_kv_map": {},
-        "skus": [],
+        "brand_id": "brand",
+        "head_imgs": ["https://img"],
+        "attr_kv_map": {"refund_policy": "1"},
+        "skus": [{"sale_price": 9900}],
     }
     assert json.loads(routes["auditfree"].calls[0].request.content) == {
         "product_id": "p-1",
         "product_name": "free",
+        "out_product_id": "merchant-1",
         "product_type": 1,
-        "head_imgs": [],
-        "attr_kv_map": {},
-        "skus": [],
+        "category_id": "cat",
+        "brand_id": "brand",
+        "head_imgs": ["https://img"],
+        "attr_kv_map": {"refund_policy": "1"},
+        "skus": [{"sale_price": 9900}],
     }
     for action in ("delete", "cancel", "listing", "delisting"):
         assert json.loads(routes[action].calls[0].request.content) == {"product_id": "p-1"}
@@ -183,19 +208,28 @@ async def test_local_life_gateway_covers_all_documented_operations() -> None:
     }
     assert json.loads(routes["order"].calls[0].request.content) == {"order_id": "order-1"}
     assert json.loads(routes["vouchers"].calls[0].request.content) == {
+        "openid": "openid-1",
         "page_size": 50,
-        "page_ctx": "",
+        "page_ctx": "voucher-cursor",
+        "status": 1,
     }
-    assert json.loads(routes["voucher"].calls[0].request.content) == {"code": "v-1"}
+    assert json.loads(routes["voucher"].calls[0].request.content) == {
+        "code": "v-1",
+        "sku_id": "sku-1",
+    }
     assert json.loads(routes["consume"].calls[0].request.content) == {
-        "consume_request_no": "v-1",
+        "consume_request_no": "consume-1",
         "codes": ["v-1"],
+        "sku_id": "sku-1",
         "out_store_id": "s-1",
-        "consume_channel": 1,
+        "consume_channel": 2,
+        "consume_store_name": "西湖门店",
+        "reserve_no": "reserve-1",
     }
     assert json.loads(routes["revoke"].calls[0].request.content) == {
-        "revoke_request_no": "v-1",
-        "revoke_vouchers": [{"code": "v-1", "out_store_id": "s-1"}],
+        "revoke_request_no": "revoke-1",
+        "reovke_vouchers": [{"code": "v-1", "sku_id": "sku-1"}],
+        "consume_request_no": "consume-1",
     }
     assert json.loads(routes["funds"].calls[0].request.content) == {
         "page": 1,
@@ -203,7 +237,9 @@ async def test_local_life_gateway_covers_all_documented_operations() -> None:
         "next_key": "f-cursor",
     }
     assert json.loads(routes["bills"].calls[0].request.content) == {
-        "page_size": 50,
+        "product_id": "p-1",
+        "bill_date": "2026-08-24",
+        "page_size": 100,
         "page_ctx": "b-cursor",
     }
     assert json.loads(routes["after_sale"].calls[0].request.content) == {
@@ -260,7 +296,10 @@ async def test_service_poi_gateway_covers_list_crud_and_audit_request_shapes() -
             )
         ),
         "create": respx.post("https://api.weixin.qq.com/wxa/create_map_poi").mock(
-            return_value=_reply({"data": {"poi_id": "poi-3"}})
+            return_value=_reply({"data": {"base_id": "base-3", "rich_id": "rich-3"}})
+        ),
+        "add_store": respx.post("https://api.weixin.qq.com/wxa/add_store").mock(
+            return_value=_reply({"data": {"audit_id": "audit-4"}})
         ),
         "update": respx.post("https://api.weixin.qq.com/wxa/update_store").mock(
             return_value=_reply({"data": {"status": "approved"}})
@@ -278,8 +317,27 @@ async def test_service_poi_gateway_covers_list_crud_and_audit_request_shapes() -
             "address": "新地址",
             "longitude": 120.2,
             "latitude": 30.1,
-            "contact_phone": "13800138000",
+            "province": "浙江省",
+            "city": "杭州市",
+            "district": "西湖区",
+            "category": "美食:中餐厅",
+            "telephone": "13800138000",
+            "photo": "https://example.com/store.jpg",
+            "license": "https://example.com/license.jpg",
             "description": "简介",
+            "districtid": 3205,
+        }
+    )
+    submitted = await gateway.create_poi(
+        {
+            "map_poi_id": "map-poi-4",
+            "name": "新店",
+            "address": "新地址",
+            "pic_list": ["https://example.com/store.jpg"],
+            "contract_phone": "13800138000",
+            "hour": "09:00-21:00",
+            "credential": "license-1",
+            "company_name": "杭州示例公司",
         }
     )
     updated = await gateway.update_poi(
@@ -298,7 +356,8 @@ async def test_service_poi_gateway_covers_list_crud_and_audit_request_shapes() -
 
     assert listed[0].poi_id == fetched.poi_id == "poi-1"
     assert searched[0].poi_id == "poi-2"
-    assert created.poi_id == "poi-3" and created.status == "pending"
+    assert created.poi_id == "map:base-3:rich-3" and created.status == "map_pending"
+    assert submitted.poi_id == "audit:audit-4" and submitted.status == "under_review"
     assert updated.poi_id == "poi-3" and status == "approved"
     assert json.loads(routes["list"].calls[0].request.content) == {"offset": 50, "limit": 50}
     assert json.loads(routes["get"].calls[0].request.content) == {"poi_id": "poi-1"}
@@ -310,16 +369,25 @@ async def test_service_poi_gateway_covers_list_crud_and_audit_request_shapes() -
         "name": "新店",
         "longitude": "120.2",
         "latitude": "30.1",
-        "province": "",
-        "city": "",
-        "district": "",
+        "province": "浙江省",
+        "city": "杭州市",
+        "district": "西湖区",
         "address": "新地址",
-        "category": "",
+        "category": "美食:中餐厅",
         "telephone": "13800138000",
-        "photo": "",
-        "license": "",
+        "photo": "https://example.com/store.jpg",
+        "license": "https://example.com/license.jpg",
         "introduct": "简介",
         "districtid": 3205,
+    }
+    assert json.loads(routes["add_store"].calls[0].request.content) == {
+        "map_poi_id": "map-poi-4",
+        "pic_list": '{"list": ["https://example.com/store.jpg"]}',
+        "contract_phone": "13800138000",
+        "hour": "09:00-21:00",
+        "credential": "license-1",
+        "company_name": "杭州示例公司",
+        "card_id": "",
     }
     assert json.loads(routes["update"].calls[0].request.content) == {
         "poi_id": "poi-3",
@@ -347,3 +415,28 @@ async def test_live_adapter_preserves_terminal_and_transient_wechat_errors() -> 
     with pytest.raises(GatewayTransientError) as transient:
         await LiveServicePoiGateway(StaticTokenProvider("access")).list_pois()
     assert transient.value.retryable
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_voucher_code_upload_preserves_partial_success_details() -> None:
+    respx.post("https://api.weixin.qq.com/channels/ec/voucher/codes/upload").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "errcode": 10001,
+                "errmsg": "partial success",
+                "success_count": 1,
+                "fail_count": 1,
+                "fail_list": [{"code": "DUPLICATE", "errcode": 10002}],
+            },
+        )
+    )
+
+    result = await LiveLocalLifeGateway(StaticTokenProvider("access")).upload_voucher_codes(
+        "product-1", "sku-1", ["GOOD", "DUPLICATE"]
+    )
+
+    assert result["accepted_count"] == 1
+    assert result["failed_count"] == 1
+    assert result["fail_list"] == [{"code": "DUPLICATE", "errcode": 10002}]

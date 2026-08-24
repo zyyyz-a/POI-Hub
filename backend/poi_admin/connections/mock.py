@@ -186,17 +186,40 @@ class MockLocalLifeGateway(_ScenarioMixin):
         self._check("get_order")
         return OrderResult(external_id, "paid", 9900, {"tenant_id": self.tenant_id})
 
-    async def list_vouchers(self, order_id: str | None = None) -> list[VoucherResult]:
+    async def list_vouchers(
+        self,
+        openid: str,
+        *,
+        status: int | None = None,
+        cursor: str | None = None,
+    ) -> list[VoucherResult]:
         self._check("list_vouchers")
-        return list(self._vouchers.values())
+        del openid, cursor
+        values = list(self._vouchers.values())
+        if status is None:
+            return values
+        states = {1: "available", 2: "consumed", 3: "refunded", 4: "expired", 5: "reserved"}
+        return [item for item in values if item.state == states.get(status)]
 
-    async def get_voucher(self, external_id: str) -> VoucherResult:
+    async def get_voucher(self, external_id: str, *, sku_id: str) -> VoucherResult:
         self._check("get_voucher")
+        del sku_id
         return self._vouchers.get(external_id, VoucherResult(external_id, "available"))
 
-    async def consume_voucher(self, external_id: str, *, out_store_id: str) -> VoucherResult:
+    async def consume_voucher(
+        self,
+        external_id: str,
+        *,
+        sku_id: str,
+        consume_request_no: str,
+        out_store_id: str,
+        consume_store_name: str | None = None,
+        consume_channel: int = 2,
+        reserve_no: str | None = None,
+    ) -> VoucherResult:
         self._check("consume_voucher")
-        current = await self.get_voucher(external_id)
+        del consume_request_no, consume_store_name, consume_channel, reserve_no
+        current = await self.get_voucher(external_id, sku_id=sku_id)
         if current.state == "consumed":
             return current
         if current.state != "available":
@@ -208,14 +231,20 @@ class MockLocalLifeGateway(_ScenarioMixin):
         return result
 
     async def revoke_consumption(
-        self, external_id: str, *, out_store_id: str | None = None
+        self,
+        external_id: str,
+        *,
+        sku_id: str,
+        revoke_request_no: str,
+        consume_request_no: str | None = None,
     ) -> VoucherResult:
         self._check("revoke_consumption")
-        current = await self.get_voucher(external_id)
+        del revoke_request_no, consume_request_no
+        current = await self.get_voucher(external_id, sku_id=sku_id)
         if current.state != "consumed":
             raise GatewayTerminalError("voucher is not consumed", code="voucher_state")
         result = VoucherResult(
-            external_id, "available", current.product_id, out_store_id, current.raw
+            external_id, "available", current.product_id, current.consume_store_id, current.raw
         )
         self._vouchers[external_id] = result
         return result
@@ -231,9 +260,10 @@ class MockLocalLifeGateway(_ScenarioMixin):
         return ([{"id": "mock-fund-1", "amount": 9900, "currency": "CNY"}], None)
 
     async def list_bills(
-        self, cursor: str | None = None
+        self, product_id: str, bill_date: str, cursor: str | None = None
     ) -> tuple[list[dict[str, Any]], str | None]:
         self._check("list_bills")
+        del product_id, bill_date, cursor
         return ([{"id": "mock-bill-1", "amount": 9900, "currency": "CNY"}], None)
 
 

@@ -64,7 +64,7 @@ async def test_failed_webhook_can_be_requeued_by_tenant_operator(client: AsyncCl
 
     assert response.status_code == 200
     assert response.json()["status"] == "received"
-    assert response.json()["attempt_count"] == 2
+    assert response.json()["attempt_count"] == 0
 
 
 @pytest.mark.asyncio

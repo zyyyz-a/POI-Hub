@@ -5,7 +5,7 @@ from __future__ import annotations
 import secrets
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import UTC
+from datetime import UTC, timedelta
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
@@ -18,6 +18,8 @@ from poi_admin.identity.models import Membership, Tenant, User, UserSession
 from .database import get_session
 from .permissions import Permission, Role, has_permission
 from .security import SESSION_COOKIE_NAME, TENANT_COOKIE_NAME, hash_token, utcnow
+
+SESSION_TOUCH_INTERVAL = timedelta(minutes=5)
 
 
 @dataclass(slots=True)
@@ -65,7 +67,13 @@ async def get_auth_context(
     if user is None or user.status != "active":
         raise auth_error("authentication_required", "用户已停用", status.HTTP_401_UNAUTHORIZED)
 
-    auth_session.last_seen_at = utcnow()
+    now = utcnow()
+    last_seen_at = auth_session.last_seen_at
+    if last_seen_at.tzinfo is None:
+        last_seen_at = last_seen_at.replace(tzinfo=UTC)
+    should_touch_session = last_seen_at <= now - SESSION_TOUCH_INTERVAL
+    if should_touch_session:
+        auth_session.last_seen_at = now
     tenant_id = request.headers.get("X-Tenant-ID") or request.cookies.get(TENANT_COOKIE_NAME)
     tenant: Tenant | None = None
     membership: Membership | None = None
@@ -110,7 +118,8 @@ async def get_auth_context(
                 Role(membership.role) if membership.role in {item.value for item in Role} else None
             )
 
-    await session.commit()
+    if should_touch_session:
+        await session.commit()
     context = AuthContext(user, auth_session, tenant, membership, role)
     request.state.auth_context = context
     return context

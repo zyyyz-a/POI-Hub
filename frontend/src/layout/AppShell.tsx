@@ -1,5 +1,5 @@
 import { App as AntApp, Avatar, Button, Layout, Space, Tag, Tooltip } from 'antd'
-import { LogoutOutlined, ShopOutlined, TeamOutlined, ApartmentOutlined, DashboardOutlined, LinkOutlined, GiftOutlined, ShoppingCartOutlined, SafetyCertificateOutlined, SwapOutlined, SyncOutlined, NotificationOutlined } from '@ant-design/icons'
+import { LogoutOutlined, ShopOutlined, TeamOutlined, ApartmentOutlined, DashboardOutlined, LinkOutlined, GiftOutlined, ShoppingCartOutlined, SafetyCertificateOutlined, SwapOutlined, SyncOutlined, NotificationOutlined, ControlOutlined } from '@ant-design/icons'
 import { Link, useLocation } from 'react-router-dom'
 import { useState, type ReactNode } from 'react'
 import { useAuth } from '../auth/AuthProvider'
@@ -11,6 +11,7 @@ const { Header, Sider, Content } = Layout
 
 type NavItem = { key: string; label: string; icon: ReactNode; roles?: Role[] }
 const navigation: NavItem[] = [
+  { key: '/platform/tenants', label: '商户主控', icon: <ControlOutlined />, roles: ['platform_admin'] },
   { key: '/dashboard', label: '运营总览', icon: <DashboardOutlined /> },
   { key: '/stores', label: '门店管理', icon: <ShopOutlined />, roles: ['platform_admin', 'tenant_admin', 'operator', 'auditor'] },
   { key: '/pois', label: '服务 POI', icon: <ApartmentOutlined />, roles: ['platform_admin', 'tenant_admin', 'operator', 'auditor'] },
@@ -39,7 +40,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <nav className="side-nav" aria-label="主导航">
           {items.map(item => <Link key={item.key} to={item.key} className={`nav-link ${active === item.key ? 'active' : ''}`}>{item.icon}<span>{item.label}</span></Link>)}
         </nav>
-        <div className="sider-foot"><span className="status-dot" /> 模拟环境</div>
+        <div className="sider-foot"><span className="status-dot" /> 中央 SaaS 服务</div>
       </Sider>
       <Layout>
         <Header className="poi-header">

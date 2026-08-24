@@ -106,8 +106,9 @@ async def test_order_sync_route_then_worker_persists_remote_order_and_vouchers(
             .scalars()
             .all()
         )
-        assert len(vouchers) == 2
-        assert all(v.state == "available" and v.code_masked == "****" for v in vouchers)
+        # Official voucher issuance callbacks are the source of voucher codes;
+        # an order lookup cannot list vouchers by order id.
+        assert vouchers == []
 
 
 @pytest.mark.asyncio
@@ -156,6 +157,7 @@ async def test_voucher_consume_and_revoke_routes_are_worker_durable(client: Asyn
             connection_id=connection_id,
             order_id=order.id,
             external_voucher_id="route-voucher-1",
+            external_sku_id="sku-1",
             state="available",
             code_masked="****",
         )

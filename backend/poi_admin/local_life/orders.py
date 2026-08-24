@@ -6,6 +6,7 @@ import hashlib
 from datetime import datetime
 from typing import Any, cast
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -16,6 +17,7 @@ from poi_admin.connections.ports import (
     Capability,
     GatewayTerminalError,
     LocalLifeGateway,
+    VoucherResult,
 )
 from poi_admin.connections.service import ConnectionService
 from poi_admin.core.config import Settings
@@ -143,6 +145,15 @@ class OrderService:
         existing_operation = await operation_service.get_by_idempotency_key(
             tenant_id, request.idempotency_key
         )
+        if existing_operation is not None and (
+            existing_operation.command_type != ORDER_SYNC_COMMAND
+            or existing_operation.connection_id != request.connection_id
+            or existing_operation.payload.get("external_order_id")
+            != request.external_order_id
+        ):
+            raise OrderServiceError(
+                "idempotency_key_conflict", "幂等键已用于其他操作", 409
+            )
         existing_order = (
             await self.session.execute(
                 select(LocalOrder).where(
@@ -187,6 +198,14 @@ class OrderService:
         operation_service = OperationService(self.session)
         existing = await operation_service.get_by_idempotency_key(tenant_id, idempotency_key)
         if existing is not None:
+            if (
+                existing.command_type != AFTER_SALE_SYNC_COMMAND
+                or existing.payload.get("order_id") != order_id
+                or existing.payload.get("external_after_sale_id") != external_after_sale_id
+            ):
+                raise OrderServiceError(
+                    "idempotency_key_conflict", "幂等键已用于其他操作", 409
+                )
             return existing
         after_sale = (
             await self.session.execute(
@@ -225,6 +244,7 @@ def order_operation_handlers(
     settings: Settings | None = None,
     *,
     gateway_override: LocalLifeGateway | None = None,
+    http_client: httpx.AsyncClient | None = None,
 ) -> dict[str, Handler]:
     service = OrderService(session, settings=settings)
 
@@ -241,7 +261,9 @@ def order_operation_handlers(
             raise GatewayTerminalError(error.message, code=error.code) from error
         return cast(
             LocalLifeGateway,
-            await ConnectionService(session, settings).gateway(operation.tenant_id, connection.id),
+            await ConnectionService(
+                session, settings, http_client=http_client
+            ).gateway(operation.tenant_id, connection.id),
         )
 
     async def sync_order(operation: IntegrationOperation) -> dict[str, Any]:
@@ -277,9 +299,37 @@ def order_operation_handlers(
         order.last_synced_at = utcnow()
         from .vouchers import VoucherService
 
-        vouchers = await gateway.list_vouchers(order.external_order_id)
-        voucher_service = VoucherService(session)
-        for voucher_result in vouchers:
+        voucher_payloads = (
+            result.raw.get("voucher_list", []) if isinstance(result.raw, dict) else []
+        )
+        voucher_results: list[VoucherResult] = []
+        states = {1: "available", 2: "consumed", 3: "refunded", 4: "expired", 5: "reserved"}
+        for raw_voucher in voucher_payloads:
+            if not isinstance(raw_voucher, dict):
+                continue
+            code = raw_voucher.get("code")
+            if not isinstance(code, str) or not code:
+                continue
+            try:
+                state = states.get(int(raw_voucher.get("status", 1)), "available")
+            except (TypeError, ValueError):
+                state = "available"
+            voucher_results.append(
+                VoucherResult(
+                    code,
+                    state,
+                    str(raw_voucher.get("product_id") or "") or None,
+                    str(
+                        raw_voucher.get("out_store_id")
+                        or raw_voucher.get("consume_store_name")
+                        or ""
+                    )
+                    or None,
+                    raw_voucher,
+                )
+            )
+        voucher_service = VoucherService(session, settings=settings)
+        for voucher_result in voucher_results:
             await voucher_service.upsert_remote_voucher(
                 operation.tenant_id,
                 order.connection_id,
@@ -290,7 +340,7 @@ def order_operation_handlers(
         return {
             "order_id": order.id,
             "external_order_id": order.external_order_id,
-            "voucher_count": len(vouchers),
+            "voucher_count": len(voucher_results),
         }
 
     async def sync_after_sale(operation: IntegrationOperation) -> dict[str, Any]:

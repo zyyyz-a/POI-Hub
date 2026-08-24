@@ -18,6 +18,7 @@ import { OperationsPage } from './pages/OperationsPage'
 import { WebhooksPage } from './pages/WebhooksPage'
 import { AuditPage } from './pages/AuditPage'
 import { MembersPage } from './pages/MembersPage'
+import { TenantsPage } from './pages/TenantsPage'
 import './styles.css'
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 1 } } })
@@ -26,8 +27,15 @@ function Protected() {
   const auth = useAuth()
   if (auth.status === 'loading') return <div className="app-loading">正在检查登录状态…</div>
   if (auth.status !== 'authenticated') return <Navigate to="/login" replace />
-  if (!auth.tenant) return <TenantSelection />
+  if (!auth.tenant) {
+    if (auth.user?.is_platform_admin) return <Routes>
+      <Route path="/platform/tenants" element={<TenantsPage />} />
+      <Route path="*" element={<TenantSelection />} />
+    </Routes>
+    return <TenantSelection />
+  }
   return <AppShell><Routes>
+    <Route path="/platform/tenants" element={<TenantsPage />} />
     <Route path="/dashboard" element={<DashboardPage />} />
     <Route path="/stores" element={<StoresPage />} />
     <Route path="/products" element={<ProductsPage />} />
@@ -54,6 +62,7 @@ function TenantSelection() {
     <div className="tenant-options">
       {auth.tenants.map(item => <button key={item.tenant_id} onClick={() => void auth.selectTenant(item.tenant_id)}><span><strong>{item.tenant_name}</strong><small>{roleLabels[item.role]}</small></span><span aria-hidden="true">→</span></button>)}
     </div>
+    {auth.user?.is_platform_admin && <Link className="selection-logout" to="/platform/tenants">进入总部商户主控</Link>}
     <button className="selection-logout" onClick={() => void auth.logout()}>退出登录</button>
   </main>
 }

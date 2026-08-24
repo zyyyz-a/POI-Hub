@@ -22,8 +22,11 @@ from poi_admin.stores.models import ServicePoi, Store, StorePoiMapping
 async def test_audit_log_redacts_secrets_and_is_append_only(client) -> None:
     database = client._transport.app.state.database  # type: ignore[attr-defined]
     async with database.session_factory() as session:
+        tenant = (
+            await session.execute(select(Tenant).where(Tenant.slug == "demo"))
+        ).scalar_one()
         row = await AuditService(session).record(
-            tenant_id="tenant-demo",
+            tenant_id=tenant.id,
             actor_user_id=None,
             action="connection.updated",
             resource_type="connection",
@@ -33,7 +36,7 @@ async def test_audit_log_redacts_secrets_and_is_append_only(client) -> None:
         )
         assert row.before_summary == {"access_token": "[REDACTED]"}
         assert row.after_summary == {"voucher_code": "[REDACTED]"}
-        assert await AuditService(session).list_for_tenant("tenant-demo")
+        assert await AuditService(session).list_for_tenant(tenant.id)
 
 
 @pytest.mark.asyncio

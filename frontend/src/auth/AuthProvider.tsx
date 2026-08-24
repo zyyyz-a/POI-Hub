@@ -22,7 +22,7 @@ export const AuthContext = createContext<AuthContextValue | null>(null)
 async function resolveTenants(user: User, memberships: Membership[]): Promise<Membership[]> {
   if (!user.is_platform_admin) return memberships
   const tenants = await api.platformTenants()
-  return tenants.map(tenant => ({
+  return tenants.filter(tenant => tenant.status === 'active').map(tenant => ({
     id: `platform-${tenant.id}`,
     tenant_id: tenant.id,
     tenant_name: tenant.name,

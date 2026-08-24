@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from poi_admin.audit.service import AuditService
 from poi_admin.core.config import Settings
 from poi_admin.core.database import get_session
 from poi_admin.core.dependencies import (
@@ -18,7 +19,12 @@ from poi_admin.core.dependencies import (
     require_permission,
 )
 from poi_admin.core.permissions import Permission, Role
-from poi_admin.core.security import CSRF_COOKIE_NAME, clear_auth_cookies, set_auth_cookies
+from poi_admin.core.security import (
+    CSRF_COOKIE_NAME,
+    TENANT_COOKIE_NAME,
+    clear_auth_cookies,
+    set_auth_cookies,
+)
 
 from .models import Tenant
 from .schemas import (
@@ -32,6 +38,7 @@ from .schemas import (
     MeResponse,
     TenantCreateRequest,
     TenantResponse,
+    TenantStatusUpdateRequest,
     TenantSwitchRequest,
     UserResponse,
 )
@@ -221,6 +228,45 @@ async def list_tenants(
     del context
     tenants = (await session.execute(select(Tenant).order_by(Tenant.created_at))).scalars().all()
     return [TenantResponse.model_validate(item) for item in tenants]
+
+
+@identity_router.patch("/platform/tenants/{tenant_id}/status", response_model=TenantResponse)
+async def update_tenant_status(
+    tenant_id: str,
+    payload: TenantStatusUpdateRequest,
+    response: Response,
+    request: Request,
+    context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_TENANTS))],
+    csrf_context: Annotated[AuthContext, Depends(require_csrf)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> TenantResponse:
+    """Let the central control plane suspend or restore one merchant tenant."""
+
+    del csrf_context
+    tenant = (
+        await session.execute(select(Tenant).where(Tenant.id == tenant_id).with_for_update())
+    ).scalar_one_or_none()
+    if tenant is None:
+        raise auth_error("tenant_not_found", "租户不存在", status.HTTP_404_NOT_FOUND)
+    before_status = tenant.status
+    if before_status == payload.status:
+        return TenantResponse.model_validate(tenant)
+
+    tenant.status = payload.status
+    await session.flush()
+    await AuditService(session).record(
+        tenant_id=tenant.id,
+        actor_user_id=context.user.id,
+        action="platform.tenant_status_updated",
+        resource_type="tenant",
+        resource_id=tenant.id,
+        before={"status": before_status},
+        after={"status": tenant.status},
+        correlation_id=getattr(request.state, "request_id", None),
+    )
+    if payload.status == "suspended" and context.tenant_id == tenant.id:
+        response.delete_cookie(TENANT_COOKIE_NAME, path="/")
+    return TenantResponse.model_validate(tenant)
 
 
 @identity_router.post(

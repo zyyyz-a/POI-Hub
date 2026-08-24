@@ -5,8 +5,10 @@ from __future__ import annotations
 from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from poi_admin.connections.crypto import redact_secrets
 from poi_admin.connections.models import WeChatConnection
 from poi_admin.connections.ports import Capability, GatewayError, ServicePoiGateway
 from poi_admin.connections.service import ConnectionService
@@ -18,9 +20,11 @@ from poi_admin.core.dependencies import (
     require_csrf,
     require_permission,
 )
+from poi_admin.core.licensing import LicenseState
 from poi_admin.core.permissions import Permission
 from poi_admin.operations.service import OperationService
 
+from .models import Store
 from .operations import (
     POI_AUDIT_COMMAND,
     POI_CREATE_COMMAND,
@@ -73,14 +77,33 @@ async def list_stores(
 )
 async def create_store(
     payload: StoreCreateRequest,
+    request: Request,
     context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_STORES))],
     csrf_context: Annotated[AuthContext, Depends(require_csrf)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> StoreResponse:
     del csrf_context
+    tenant_id = _tenant_id(context)
+    license_state: LicenseState = request.app.state.license
+    if (
+        license_state.mode == "enforce"
+        and license_state.current_status() == "valid"
+        and license_state.claims is not None
+    ):
+        store_count = await session.scalar(
+            select(func.count())
+            .select_from(Store)
+            .where(Store.tenant_id == tenant_id, Store.status != "archived")
+        )
+        if int(store_count or 0) >= license_state.claims.max_stores:
+            raise auth_error(
+                "license_store_limit",
+                "已达到当前软件服务授权的门店数量上限",
+                402,
+            )
     try:
         store = await StoreService(session).create_store(
-            _tenant_id(context), **payload.model_dump()
+            tenant_id, **payload.model_dump()
         )
     except StoreServiceError as error:
         _raise(error)
@@ -149,7 +172,11 @@ async def list_pois(
 async def _poi_connection(
     request: Request, session: AsyncSession, tenant_id: str, connection_id: str
 ) -> tuple[ConnectionService, WeChatConnection]:
-    connection_service = ConnectionService(session, cast(Settings, request.app.state.settings))
+    connection_service = ConnectionService(
+        session,
+        cast(Settings, request.app.state.settings),
+        http_client=request.app.state.http_client,
+    )
     connection = await connection_service.get(tenant_id, connection_id)
     if connection is None:
         raise auth_error("connection_not_found", "连接不存在", 404)
@@ -197,14 +224,15 @@ async def _enqueue_poi(
     command: str,
     idempotency_key: str,
     payload: dict[str, Any],
+    settings: Settings,
 ) -> PoiOperationAcceptedResponse:
-    service = OperationService(session)
+    service = OperationService(session, settings.encryption_key)
     existing = await service.get_by_idempotency_key(tenant_id, idempotency_key)
     if existing is not None:
         if (
             existing.command_type != command
             or existing.connection_id != connection_id
-            or existing.payload != payload
+            or existing.payload != redact_secrets(payload)
         ):
             raise auth_error("idempotency_key_conflict", "幂等键已用于其他操作", 409)
         return PoiOperationAcceptedResponse(operation_id=existing.id, status=existing.status)
@@ -234,7 +262,13 @@ async def create_poi(
     await _poi_connection(request, session, tenant_id, payload.connection_id)
     body = payload.model_dump(exclude={"connection_id", "idempotency_key"}, exclude_none=True)
     return await _enqueue_poi(
-        session, tenant_id, payload.connection_id, POI_CREATE_COMMAND, payload.idempotency_key, body
+        session,
+        tenant_id,
+        payload.connection_id,
+        POI_CREATE_COMMAND,
+        payload.idempotency_key,
+        body,
+        cast(Settings, request.app.state.settings),
     )
 
 
@@ -259,7 +293,13 @@ async def update_poi(
     body = {"poi_id": poi_id, **payload.model_dump(exclude={"idempotency_key"}, exclude_none=True)}
     await _poi_connection(request, session, tenant_id, poi.connection_id)
     return await _enqueue_poi(
-        session, tenant_id, poi.connection_id, POI_UPDATE_COMMAND, payload.idempotency_key, body
+        session,
+        tenant_id,
+        poi.connection_id,
+        POI_UPDATE_COMMAND,
+        payload.idempotency_key,
+        body,
+        cast(Settings, request.app.state.settings),
     )
 
 
@@ -289,6 +329,7 @@ async def delete_poi(
         POI_DELETE_COMMAND,
         payload.idempotency_key,
         {"poi_id": poi_id},
+        cast(Settings, request.app.state.settings),
     )
 
 
@@ -318,6 +359,7 @@ async def refresh_poi_audit(
         POI_AUDIT_COMMAND,
         payload.idempotency_key,
         {"poi_id": poi_id},
+        cast(Settings, request.app.state.settings),
     )
 
 

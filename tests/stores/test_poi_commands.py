@@ -41,6 +41,11 @@ async def test_create_poi_is_durable_and_persists_remote_mirror(client: AsyncCli
         "address": "杭州市西湖区新湖路 3 号",
         "latitude": 30.251,
         "longitude": 120.161,
+        "map_poi_id": "map-poi-new-lake",
+        "pic_list": ["https://example.com/store.jpg"],
+        "contract_phone": "13800138000",
+        "hour": "09:00-21:00",
+        "credential": "license-1",
     }
     created = await client.post("/api/v1/pois", headers=headers, json=payload)
     duplicate = await client.post("/api/v1/pois", headers=headers, json=payload)
@@ -87,6 +92,11 @@ async def test_poi_update_delete_and_audit_refresh_are_durable(client: AsyncClie
             "idempotency_key": "poi-create-commands",
             "name": "待更新门店",
             "address": "杭州市西湖区测试路 1 号",
+            "map_poi_id": "map-poi-command",
+            "pic_list": ["https://example.com/store.jpg"],
+            "contract_phone": "13800138000",
+            "hour": "09:00-21:00",
+            "credential": "license-1",
         },
     )
     assert created.status_code == 202

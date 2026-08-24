@@ -50,8 +50,10 @@ async def test_process_worker_polls_with_floor_and_disposes_on_shutdown(monkeypa
     runs: list[object] = []
 
     class FakeOperationWorker:
-        def __init__(self, session, *, settings) -> None:
+        def __init__(self, session, *, settings, **kwargs) -> None:
+            del kwargs
             runs.append((session, settings))
+            self.processed_last_cycle = False
 
         async def run_once(self) -> None:
             return None
@@ -79,8 +81,8 @@ async def test_process_worker_disposes_when_operation_worker_crashes(monkeypatch
     database = FakeDatabase()
 
     class CrashingWorker:
-        def __init__(self, session, *, settings) -> None:
-            del session, settings
+        def __init__(self, session, *, settings, **kwargs) -> None:
+            del session, settings, kwargs
 
         async def run_once(self) -> None:
             raise RuntimeError("worker failure")
@@ -178,6 +180,81 @@ async def test_operation_worker_marks_webhook_failed_and_leaves_it_retryable(
             select(WebhookEvent).where(WebhookEvent.id == event.id)
         )
     ).scalar_one()
-    assert refreshed.status == "failed"
+    assert refreshed.status == "retry_wait"
     assert refreshed.attempt_count == 1
-    assert refreshed.error_message == "callback failed"
+    assert refreshed.error_message == "Webhook processing failed; inspect server logs"
+
+
+@pytest.mark.asyncio
+async def test_failed_webhook_does_not_starve_operation_queue(
+    operation_service, tenant, monkeypatch
+) -> None:
+    connection = WeChatConnection(
+        tenant_id=tenant.id,
+        capability=Capability.LOCAL_LIFE.value,
+        mode=ConnectionMode.MOCK.value,
+    )
+    operation_service.session.add(connection)
+    await operation_service.session.flush()
+    operation_service.session.add(
+        WebhookEvent(
+            tenant_id=tenant.id,
+            connection_id=connection.id,
+            fingerprint="s" * 64,
+            event_type="poison",
+            payload={},
+        )
+    )
+    operation = await operation_service.enqueue(tenant.id, "sync", "no-starvation", {})
+
+    async def fail_webhook(session, callback):
+        del session, callback
+        raise RuntimeError("private callback failure")
+
+    async def handle_operation(_operation):
+        return {"ok": True}
+
+    monkeypatch.setattr("poi_admin.operations.worker.process_webhook_event", fail_webhook)
+    worker = OperationWorker(
+        operation_service.session, handlers={"sync": handle_operation}
+    )
+    assert await worker.run_once() is None
+    completed = await worker.run_once()
+
+    assert completed is not None and completed.id == operation.id
+    refreshed = await operation_service.get(tenant.id, operation.id)
+    assert refreshed is not None and refreshed.status == OperationStatus.SUCCEEDED
+
+
+@pytest.mark.asyncio
+async def test_webhook_moves_to_dead_letter_after_attempt_budget(
+    operation_service, tenant, monkeypatch
+) -> None:
+    connection = WeChatConnection(
+        tenant_id=tenant.id,
+        capability=Capability.LOCAL_LIFE.value,
+        mode=ConnectionMode.MOCK.value,
+    )
+    operation_service.session.add(connection)
+    await operation_service.session.flush()
+    event = WebhookEvent(
+        tenant_id=tenant.id,
+        connection_id=connection.id,
+        fingerprint="d" * 64,
+        event_type="poison",
+        payload={},
+        max_attempts=1,
+    )
+    operation_service.session.add(event)
+    await operation_service.session.commit()
+
+    async def fail_webhook(session, callback):
+        del session, callback
+        raise RuntimeError("private callback failure")
+
+    monkeypatch.setattr("poi_admin.operations.worker.process_webhook_event", fail_webhook)
+    await OperationWorker(operation_service.session, handlers={}).run_once()
+    await operation_service.session.refresh(event)
+
+    assert event.status == "dead_letter"
+    assert event.attempt_count == 1

@@ -26,13 +26,25 @@ async def test_mock_gateways_implement_typed_contracts() -> None:
     assert (await local.list_products())[0]
     order = await local.get_order("order-1")
     assert order.status == "paid"
-    voucher = (await local.list_vouchers(order.external_id))[0]
-    consumed = await local.consume_voucher(voucher.external_id, out_store_id="store-1")
+    voucher = (await local.list_vouchers("openid-1"))[0]
+    consumed = await local.consume_voucher(
+        voucher.external_id,
+        sku_id="sku-1",
+        consume_request_no="consume-1",
+        out_store_id="store-1",
+    )
     assert consumed.state == "consumed"
-    assert (await local.revoke_consumption(voucher.external_id)).state == "available"
+    assert (
+        await local.revoke_consumption(
+            voucher.external_id,
+            sku_id="sku-1",
+            revoke_request_no="revoke-1",
+            consume_request_no="consume-1",
+        )
+    ).state == "available"
     assert (await local.get_after_sale("after-sale-1"))["status"] == "none"
     assert (await local.list_funds())[0]
-    assert (await local.list_bills())[0]
+    assert (await local.list_bills("product-1", "2026-08-24"))[0]
     pois = await poi.list_pois()
     assert pois and pois[0].poi_id.startswith("mock-poi-")
     assert (await poi.get_poi(pois[0].poi_id)).poi_id == pois[0].poi_id

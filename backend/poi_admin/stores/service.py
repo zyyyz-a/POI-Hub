@@ -319,7 +319,10 @@ class StoreService:
         )
         remote_ids = {remote.poi_id for remote in remote_pois}
         for stale in existing_pois:
-            if stale.external_poi_id not in remote_ids:
+            if (
+                stale.external_poi_id not in remote_ids
+                and not stale.external_poi_id.startswith(("audit:", "map:"))
+            ):
                 stale.remote_status = "deleted"
                 stale.last_synced_at = utcnow()
 
@@ -334,6 +337,17 @@ class StoreService:
                     )
                 )
             ).scalar_one_or_none()
+            if poi is None:
+                pending_matches = [
+                    item
+                    for item in existing_pois
+                    if item.external_poi_id.startswith("audit:")
+                    and item.name.strip().casefold() == remote.name.strip().casefold()
+                    and item.address.strip().casefold() == remote.address.strip().casefold()
+                ]
+                if len(pending_matches) == 1:
+                    poi = pending_matches[0]
+                    poi.external_poi_id = remote.poi_id
             if poi is None:
                 poi = ServicePoi(
                     tenant_id=tenant_id,

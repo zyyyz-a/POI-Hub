@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,9 +51,16 @@ class ConnectionPublic:
 
 
 class ConnectionService:
-    def __init__(self, session: AsyncSession, settings: Settings) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        settings: Settings,
+        *,
+        http_client: httpx.AsyncClient | None = None,
+    ) -> None:
         self.session = session
         self.settings = settings
+        self.http_client = http_client
 
     async def list(self, tenant_id: str) -> list[WeChatConnection]:
         result = await self.session.execute(
@@ -156,16 +164,30 @@ class ConnectionService:
         from .tokens import token_provider_from_secrets
 
         secrets = decrypt_secret_bundle(connection.encrypted_secrets, self.settings.encryption_key)
-        base_url = str(secrets.get("api_base_url", "https://api.weixin.qq.com"))
-        provider = token_provider_from_secrets(connection.app_id, secrets, base_url=base_url)
+        # The outbound target is platform-owned. Tenant-managed secrets must never
+        # be able to turn an integration worker into an internal-network proxy.
+        base_url = self.settings.wechat_api_base_url
+        provider = token_provider_from_secrets(
+            connection.app_id,
+            secrets,
+            base_url=base_url,
+            http_client=self.http_client,
+        )
         if connection.capability == Capability.LOCAL_LIFE.value:
-            return LiveLocalLifeGateway(provider, base_url=base_url)
+            return LiveLocalLifeGateway(
+                provider, base_url=base_url, http_client=self.http_client
+            )
         if connection.capability == Capability.SERVICE_POI.value:
             try:
                 district_id = int(secrets.get("district_id", 0))
             except (TypeError, ValueError):
                 district_id = 0
-            return LiveServicePoiGateway(provider, base_url=base_url, district_id=district_id)
+            return LiveServicePoiGateway(
+                provider,
+                base_url=base_url,
+                district_id=district_id,
+                http_client=self.http_client,
+            )
         raise GatewayTerminalError("连接能力无效", code="invalid_connection")
 
     @staticmethod

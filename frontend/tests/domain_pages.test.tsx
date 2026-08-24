@@ -113,9 +113,12 @@ describe('domain page interactions', () => {
       return json({ fund_count: 1, bill_count: 1, difference_count: 1, difference: 100, funds: [], bills: [] })
     })
     renderPage(<AccountingPage />)
-    expect(await screen.findByText('发现对账差异')).toBeInTheDocument()
+    expect(await screen.findByText('发现已关联订单的对账差异')).toBeInTheDocument()
     fireEvent.mouseDown(screen.getAllByRole('combobox')[0])
     fireEvent.click(await screen.findByText('c-a', { selector: '.ant-select-item-option-content' }))
+    fireEvent.change(screen.getByPlaceholderText('微信商品 ID'), { target: { value: 'product-1' } })
+    fireEvent.change(screen.getByLabelText('账单日期'), { target: { value: '2026-08-24' } })
+    fireEvent.click(screen.getByRole('button', { name: '同步账单' }))
     await waitFor(() => expect(callsFor(fetchMock, '/api/v1/local-life/accounting/sync')).toHaveLength(1))
   })
 

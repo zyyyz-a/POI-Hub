@@ -108,6 +108,9 @@ export interface AccountingSummary {
   bill_total?: number
   difference?: number
   differences?: unknown[]
+  linked_order_count?: number
+  unmatched_fund_count?: number
+  unmatched_bill_count?: number
 }
 
 export interface OperationRecord {
@@ -119,6 +122,21 @@ export interface OperationRecord {
   attempt_count?: number
   created_at?: string
   completed_at?: string | null
+}
+
+export interface RemotePoiRecord {
+  poi_id: string
+  name: string
+  address: string
+  latitude?: number | null
+  longitude?: number | null
+  status: string
+}
+
+export interface BatchRetryResponse {
+  accepted_count: number
+  rejected_count: number
+  items: Array<{ operation_id: string; accepted: boolean; reason?: string | null }>
 }
 
 export interface VoucherRecord {
@@ -182,7 +200,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       message,
       response.status,
       stringValue(problem.code) ?? stringValue(nested.code),
-      stringValue(problem.correlation_id) ?? stringValue(nested.correlation_id),
+      stringValue(problem.correlation_id)
+        ?? stringValue(nested.correlation_id)
+        ?? response.headers.get('X-Request-ID')
+        ?? undefined,
       problem.field_errors ?? nested.field_errors,
     )
   }
@@ -216,6 +237,9 @@ export const api = {
     method: 'POST', body: JSON.stringify({ tenant_id: tenantId }),
   }),
   platformTenants: () => request<Tenant[]>('/api/v1/platform/tenants'),
+  setTenantStatus: (tenantId: string, status: 'active' | 'suspended') => request<Tenant>('/api/v1/platform/tenants/' + tenantId + '/status', {
+    method: 'PATCH', body: JSON.stringify({ status }),
+  }),
   dashboard: () => request<DashboardSummary | { summary: DashboardSummary }>('/api/v1/dashboard'),
   stores: () => request<StoreRecord[]>('/api/v1/stores'),
   pois: () => request<PoiRecord[]>('/api/v1/pois'),
@@ -237,7 +261,7 @@ export const api = {
   updateStore: (storeId: string, payload: Record<string, unknown>) => request<StoreRecord>('/api/v1/stores/' + storeId, { method: 'PATCH', body: JSON.stringify(payload) }),
   archiveStore: (storeId: string, version: number) => request<void>('/api/v1/stores/' + storeId + '?version=' + version, { method: 'DELETE', body: '{}' }),
   syncPois: (payload: { connection_id: string; idempotency_key: string }) => request<{ operation_id: string; status: string }>('/api/v1/pois/sync', { method: 'POST', body: JSON.stringify(payload) }),
-  searchPois: (connectionId: string, keyword: string) => request<PoiRecord[]>('/api/v1/pois/search?connection_id=' + encodeURIComponent(connectionId) + '&keyword=' + encodeURIComponent(keyword)),
+  searchPois: (connectionId: string, keyword: string) => request<RemotePoiRecord[]>('/api/v1/pois/search?connection_id=' + encodeURIComponent(connectionId) + '&keyword=' + encodeURIComponent(keyword)),
   createPoi: (payload: Record<string, unknown>) => request<{ operation_id: string; status: string }>('/api/v1/pois', { method: 'POST', body: JSON.stringify(payload) }),
   updatePoi: (poiId: string, payload: Record<string, unknown>) => request<{ operation_id: string; status: string }>('/api/v1/pois/' + poiId, { method: 'PATCH', body: JSON.stringify(payload) }),
   deletePoi: (poiId: string, idempotencyKey: string) => request<{ operation_id: string; status: string }>('/api/v1/pois/' + poiId + '/delete', { method: 'POST', body: JSON.stringify({ idempotency_key: idempotencyKey }) }),
@@ -254,8 +278,9 @@ export const api = {
   vouchers: () => request<VoucherRecord[]>('/api/v1/local-life/vouchers'),
   consumeVoucher: (voucherId: string, payload: { store_id: string; idempotency_key?: string }) => request<unknown>('/api/v1/local-life/vouchers/' + voucherId + '/consume', { method: 'POST', body: JSON.stringify(payload) }),
   revokeVoucher: (voucherId: string, payload: { store_id?: string; idempotency_key?: string }) => request<unknown>('/api/v1/local-life/vouchers/' + voucherId + '/revoke', { method: 'POST', body: JSON.stringify(payload) }),
-  syncAccounting: (payload: { connection_id: string; idempotency_key: string }) => request<unknown>('/api/v1/local-life/accounting/sync', { method: 'POST', body: JSON.stringify(payload) }),
+  syncAccounting: (payload: { connection_id: string; product_id: string; bill_date: string; idempotency_key: string }) => request<unknown>('/api/v1/local-life/accounting/sync', { method: 'POST', body: JSON.stringify(payload) }),
   retryOperation: (operationId: string) => request<OperationRecord>('/api/v1/operations/' + operationId + '/retry', { method: 'POST', body: '{}' }),
+  retryOperationsBatch: (operationIds: string[]) => request<BatchRetryResponse>('/api/v1/operations/retry-batch', { method: 'POST', body: JSON.stringify({ operation_ids: operationIds }) }),
   retryWebhook: (eventId: string) => request<unknown>('/api/v1/webhook-events/' + eventId + '/retry', { method: 'POST', body: '{}' }),
   createConnection: (payload: Record<string, unknown>) => request<unknown>('/api/v1/connections', { method: 'POST', body: JSON.stringify(payload) }),
   inviteMember: (payload: Record<string, unknown>) => request<unknown>('/api/v1/members/invitations', { method: 'POST', body: JSON.stringify(payload) }),
