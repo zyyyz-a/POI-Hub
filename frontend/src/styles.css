@@ -1,0 +1,32 @@
+:root {
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  color: #172b4d;
+  background: #f4f7fb;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: #f4f7fb; }
+button, input { font: inherit; }
+a { color: inherit; text-decoration: none; }
+.app-loading { display: grid; min-height: 100vh; place-items: center; color: #55708f; }
+.not-found-page { max-width: 720px; padding: 68px 24px; }
+.not-found-page h2 { margin: 10px 0 8px; font-size: 26px; color: #102a43; }
+.not-found-page p { margin: 0 0 18px; color: #627d98; }
+.not-found-link { color: #0f766e; font-weight: 700; }
+.page-kicker { color: #829ab1 !important; font-size: 11px; font-weight: 700; letter-spacing: .12em; }
+.tenant-selection { width: min(100% - 40px, 620px); margin: 0 auto; padding: 72px 0; }
+.tenant-selection .login-brand { margin-bottom: 70px; color: #102a43; }
+.tenant-selection .brand-mark { color: #fff; background: #102a43; }
+.tenant-selection h1 { margin: 9px 0 5px; color: #102a43; font-size: 28px; }
+.tenant-selection > p { margin: 0 0 28px; color: #627d98; }
+.tenant-options { display: grid; gap: 10px; }
+.tenant-options button { display: flex; align-items: center; justify-content: space-between; min-height: 70px; padding: 14px 18px; border: 1px solid #d9e2ec; border-radius: 7px; color: #243b53; background: #fff; text-align: left; cursor: pointer; }
+.tenant-options button:hover { border-color: #7dd3c7; box-shadow: 0 4px 12px rgba(16,42,67,.06); }
+.tenant-options button span:first-child { display: grid; gap: 4px; }
+.tenant-options small { color: #829ab1; }
+.selection-logout { margin-top: 26px; padding: 8px 0; border: 0; color: #627d98; background: transparent; cursor: pointer; }
+@media (max-width: 768px) {
+  .poi-content { padding: 18px !important; }
+  .user-name { display: none; }
+}

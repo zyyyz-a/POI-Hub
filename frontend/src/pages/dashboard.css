@@ -1,0 +1,26 @@
+.dashboard-page { max-width: 1380px; margin: 0 auto; }
+.page-heading { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 26px; }
+.page-heading h2 { margin: 6px 0 2px; color: #102a43; font-size: 28px; }
+.page-heading p { margin: 0; color: #627d98; }
+.metric-grid { margin-bottom: 16px; }
+.metric-card, .workspace-card { border-radius: 7px !important; box-shadow: 0 2px 7px rgba(16,42,67,.04); }
+.metric-card { min-height: 160px; }
+.metric-card .ant-card-body { padding: 19px; }
+.metric-top { display: flex; justify-content: space-between; }
+.metric-icon { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 6px; }
+.metric-arrow { color: #9fb3c8; }
+.metric-value { margin-top: 17px; color: #102a43; font-size: 30px; font-weight: 700; line-height: 1; }
+.metric-label { margin-top: 9px; color: #334e68; font-size: 13px; font-weight: 600; }
+.metric-description { margin-top: 4px; color: #829ab1; font-size: 11px; }
+.metric-card.amber .metric-icon { color: #b7791f; background: #fff8e7; } .metric-card.red .metric-icon { color: #c05640; background: #fff1ef; } .metric-card.blue .metric-icon { color: #2b6cb0; background: #edf6ff; } .metric-card.green .metric-icon { color: #2f855a; background: #ebfaf2; }
+.dashboard-lower { margin-top: 2px; }
+.workspace-card { min-height: 246px; }
+.workspace-card .ant-card-head { border-bottom: 1px solid #edf2f7; }
+.workspace-card .ant-card-head-title { color: #243b53; font-size: 14px; }
+.activity-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 155px; gap: 7px; color: #829ab1; font-size: 12px; }
+.activity-empty strong { color: #627d98; font-size: 13px; }
+.empty-icon { display: grid; width: 38px; height: 38px; margin-bottom: 3px; place-items: center; border-radius: 50%; color: #7dd3c7; background: #edf9f7; }
+.connection-row { display: flex; align-items: center; justify-content: space-between; padding: 13px 0; border-bottom: 1px solid #edf2f7; color: #334e68; font-size: 13px; }
+.connection-row .status-dot { margin-left: 2px; }
+.connection-foot { padding-top: 14px; color: #9fb3c8; font-size: 11px; }
+@media (max-width: 600px) { .page-heading { display: block; } .page-heading > .ant-tag { display: inline-flex; margin-top: 12px; } }

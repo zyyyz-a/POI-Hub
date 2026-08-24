@@ -1,0 +1,24 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Alert, Button, Card, Col, Form, Input, Row, Select, Statistic, Table, Tag, Typography } from 'antd'
+import { RefreshCw } from 'lucide-react'
+import { api } from '../api/client'
+import { useAuth } from '../auth/AuthProvider'
+import { WorkspaceState } from './WorkspaceStates'
+import './workspace.css'
+
+export function AccountingPage() {
+  const { tenant } = useAuth()
+  const client = useQueryClient()
+  const query = useQuery({ queryKey: ['accounting', tenant?.id], queryFn: api.accounting, enabled: Boolean(tenant) })
+  const connections = useQuery({ queryKey: ['connections', tenant?.id], queryFn: api.connections, enabled: Boolean(tenant) })
+  const connectionRows = Array.isArray(connections.data) ? connections.data : []
+  const sync = useMutation({ mutationFn: (payload: { connection_id: string; product_id: string; bill_date: string }) => api.syncAccounting({ ...payload, idempotency_key: 'accounting-sync:' + payload.product_id + ':' + payload.bill_date + ':' + Date.now() }), onSuccess: async () => { await client.invalidateQueries({ queryKey: ['accounting', tenant?.id] }); await client.invalidateQueries({ queryKey: ['operations', tenant?.id] }) } })
+  const summary = query.data
+  return <section className="workspace-page">
+    <div className="page-heading"><div><Typography.Text className="page-kicker">结算与财务</Typography.Text><Typography.Title level={2}>资金与对账</Typography.Title><Typography.Paragraph>按微信商品与核销日期同步券账单，核对资金流水和商家结算金额。</Typography.Paragraph></div><Button icon={<RefreshCw size={15} />} onClick={() => void query.refetch()}>刷新</Button></div>
+    <Card className="workspace-table-card" variant="borderless"><Form layout="inline" onFinish={values => sync.mutate(values as { connection_id: string; product_id: string; bill_date: string })}><Form.Item name="connection_id" rules={[{ required: true }]}><Select className="workspace-select" placeholder="本地生活连接" options={connectionRows.filter(item => (item as { capability?: string }).capability === 'local_life').map(item => ({ value: (item as { id: string }).id, label: (item as { id: string }).id }))} /></Form.Item><Form.Item name="product_id" rules={[{ required: true }]}><Input placeholder="微信商品 ID" /></Form.Item><Form.Item name="bill_date" rules={[{ required: true }]}><Input type="date" aria-label="账单日期" /></Form.Item><Button type="primary" htmlType="submit" loading={sync.isPending}>同步账单</Button></Form></Card>
+    <Card className="workspace-table-card" variant="borderless"><WorkspaceState loading={query.isPending} error={query.error} empty={!summary}>
+      {summary && <><Row gutter={[16, 16]}><Col xs={24} sm={6}><Card size="small"><Statistic title="资金流水" value={summary.fund_count} /></Card></Col><Col xs={24} sm={6}><Card size="small"><Statistic title="券账单" value={summary.bill_count} /></Card></Col><Col xs={24} sm={6}><Card size="small"><Statistic title="已关联订单" value={summary.linked_order_count ?? 0} /></Card></Col><Col xs={24} sm={6}><Card size="small"><Statistic title="待处理差异" value={summary.difference_count} /></Card></Col></Row>{summary.difference_count > 0 && <Alert className="workspace-alert" type="warning" showIcon message="发现已关联订单的对账差异" description={'净差额 ' + String((summary.difference ?? 0) / 100) + ' 元'} />}{((summary.unmatched_fund_count ?? 0) + (summary.unmatched_bill_count ?? 0)) > 0 && <Alert className="workspace-alert" type="info" showIcon message="存在尚不能自动关联的记录" description={'未关联资金流水 ' + String(summary.unmatched_fund_count ?? 0) + ' 条，未关联券账单 ' + String(summary.unmatched_bill_count ?? 0) + ' 条；系统不会把不同维度的总额误报为差异。'} />}<Typography.Title level={4} className="workspace-subtitle">资金流水</Typography.Title><Table<Record<string, unknown>> rowKey={row => String(row.id ?? row.external_id ?? 'fund')} dataSource={summary.funds ?? []} pagination={{ pageSize: 5 }} columns={[{ title: '外部编号', dataIndex: 'external_id' }, { title: '类型', dataIndex: 'entry_type', render: value => value || '-' }, { title: '金额', dataIndex: 'amount', render: value => typeof value === 'number' ? '¥' + (value / 100).toFixed(2) : '-' }, { title: '币种', dataIndex: 'currency', render: value => <Tag>{String(value ?? 'CNY')}</Tag> }]} /><Typography.Title level={4} className="workspace-subtitle">券账单</Typography.Title><Table<Record<string, unknown>> rowKey={row => String(row.id ?? row.external_id ?? 'bill')} dataSource={summary.bills ?? []} pagination={{ pageSize: 5 }} columns={[{ title: '外部编号', dataIndex: 'external_id' }, { title: '类型', dataIndex: 'entry_type', render: value => value || '-' }, { title: '金额', dataIndex: 'amount', render: value => typeof value === 'number' ? '¥' + (value / 100).toFixed(2) : '-' }, { title: '币种', dataIndex: 'currency', render: value => <Tag>{String(value ?? 'CNY')}</Tag> }]} /></>}
+    </WorkspaceState></Card>
+  </section>
+}

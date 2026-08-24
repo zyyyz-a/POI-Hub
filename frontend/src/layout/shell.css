@@ -1,0 +1,28 @@
+.poi-layout { min-height: 100vh; }
+.poi-sider { position: fixed !important; z-index: 10; inset-inline-start: 0; height: 100vh; overflow: auto; background: #102a43 !important; }
+.brand, .login-brand { display: flex; align-items: center; gap: 10px; color: #fff; font-size: 17px; font-weight: 700; letter-spacing: .02em; }
+.brand { height: 70px; padding: 0 22px; }
+.brand-mark { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 7px; color: #102a43; background: #7dd3c7; font-weight: 800; }
+.side-nav { display: grid; gap: 4px; padding: 12px; }
+.nav-link { display: flex; align-items: center; gap: 12px; min-height: 42px; padding: 0 12px; border-radius: 6px; color: #b9c9d8; font-size: 13px; transition: background .18s, color .18s; }
+.nav-link:hover, .nav-link.active { color: #fff; background: #1d4260; }
+.nav-link.active { box-shadow: inset 3px 0 #7dd3c7; }
+.sider-foot { position: absolute; bottom: 20px; left: 24px; color: #9fb3c8; font-size: 12px; }
+.status-dot { display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: #46b990; box-shadow: 0 0 0 3px rgba(70,185,144,.15); }
+.poi-header { position: sticky; z-index: 5; top: 0; display: flex; align-items: center; justify-content: space-between; height: 70px; padding: 0 30px; border-bottom: 1px solid #e5edf5; background: rgba(255,255,255,.96) !important; }
+.header-context { display: flex; align-items: center; gap: 20px; }
+.eyebrow { color: #829ab1; font-size: 11px; font-weight: 700; letter-spacing: .1em; }
+.tenant-switcher { position: relative; }
+.tenant-trigger { display: flex; align-items: center; gap: 9px; padding: 6px 10px; border: 1px solid #d9e2ec; border-radius: 5px; color: #243b53; background: #fff; cursor: pointer; }
+.tenant-trigger:hover { border-color: #7dd3c7; }
+.tenant-label { color: #829ab1; font-size: 11px; }
+.tenant-trigger strong { font-size: 13px; }
+.tenant-menu { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; min-width: 190px; padding: 5px; border: 1px solid #d9e2ec; border-radius: 6px; background: #fff; box-shadow: 0 8px 24px rgba(16,42,67,.12); }
+.tenant-menu button { display: flex; width: 100%; justify-content: space-between; padding: 9px 10px; border: 0; border-radius: 4px; color: #243b53; background: transparent; text-align: left; cursor: pointer; }
+.tenant-menu button:hover:not(:disabled) { background: #f0f7f7; }
+.tenant-menu button:disabled { color: #829ab1; cursor: default; }
+.tenant-menu small { color: #829ab1; }
+.user-avatar { color: #102a43 !important; background: #d9f0ec !important; }
+.user-name { color: #334e68; font-size: 13px; }
+.poi-content { min-height: calc(100vh - 70px); padding: 30px; margin-inline-start: 200px; }
+@media (max-width: 991px) { .poi-content { margin-inline-start: 0; } .poi-sider { position: absolute !important; } .header-context { gap: 8px; } .eyebrow { display: none; } }
