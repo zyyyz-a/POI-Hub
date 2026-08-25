@@ -16,6 +16,9 @@ dependencies = [
     "cryptography>=43,<46",
 ]
 
+[project.scripts]
+poi-bootstrap-admin = "poi_admin.bootstrap:main"
+
 [dependency-groups]
 dev = [
     "mypy>=1.13,<2",
