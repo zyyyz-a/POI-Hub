@@ -27,3 +27,23 @@ test('seeded Mock operator workflow reaches mapping and operation center', async
   await page.getByRole('button', { name: '确认' }).first().click()
   await expect(page.getByText('当前活动映射')).toBeVisible()
 })
+
+test('fixed sidebar does not cover tenant controls', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByLabel('邮箱').fill('admin@example.com')
+  await page.getByLabel('密码').fill('correct-horse-battery-staple')
+  await page.locator('button[type="submit"]').click()
+  await expect(page.getByRole('heading', { name: '运营总览' })).toBeVisible()
+
+  const sider = await page.locator('.poi-sider').boundingBox()
+  const trigger = await page.getByRole('button', { name: /\u5207\u6362\u79df\u6237/ }).boundingBox()
+  expect(sider).not.toBeNull()
+  expect(trigger).not.toBeNull()
+  expect(trigger!.x).toBeGreaterThanOrEqual(sider!.x + sider!.width - 1)
+
+  await page.getByRole('button', { name: /\u5207\u6362\u79df\u6237/ }).click()
+  const menu = await page.getByRole('menu').boundingBox()
+  expect(menu).not.toBeNull()
+  expect(menu!.x).toBeGreaterThanOrEqual(sider!.x + sider!.width - 1)
+})
+
