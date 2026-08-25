@@ -42,14 +42,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
         <div className="sider-foot"><span className="status-dot" /> 中央 SaaS 服务</div>
       </Sider>
-      <Layout>
+      <Layout className="poi-main">
         <Header className="poi-header">
           <div className="header-context">
             <span className="eyebrow">运营工作台</span>
             {auth.tenant && <TenantSwitcher />}
           </div>
-          <Space size="middle">
-            <Tag color="blue">{role ? roleLabels[role] : '未选择角色'}</Tag>
+          <Space className="header-account" size="middle">
+            <Tag className="role-tag" color="blue">{role ? roleLabels[role] : '未选择角色'}</Tag>
             <Avatar size="small" className="user-avatar">{auth.user?.display_name.slice(0, 1) || '?'}</Avatar>
             <span className="user-name">{auth.user?.display_name}</span>
             <Tooltip title="退出登录"><Button type="text" aria-label="退出登录" icon={<LogoutOutlined />} onClick={() => void auth.logout()} /></Tooltip>
@@ -69,7 +69,8 @@ function TenantSwitcher() {
       <span className="tenant-label">当前租户</span><strong>{auth.tenant?.name}</strong><SwapOutlined />
     </button>
     {open && <div className="tenant-menu" role="menu">
-      {auth.tenants.map(item => <button key={item.tenant_id} role="menuitem" disabled={item.tenant_id === auth.tenant?.id} onClick={() => { setOpen(false); void auth.selectTenant(item.tenant_id) }}>{item.tenant_name}<small>{roleLabels[item.role]}</small></button>)}
+      {auth.tenants.map(item => <button key={item.tenant_id} role="menuitem" disabled={item.tenant_id === auth.tenant?.id} onClick={() => { setOpen(false); void auth.selectTenant(item.tenant_id) }}><span className="tenant-option-name">{item.tenant_name}</span><small>{roleLabels[item.role]}</small></button>)}
     </div>}
   </div>
 }
+
