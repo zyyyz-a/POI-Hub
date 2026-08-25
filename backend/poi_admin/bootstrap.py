@@ -203,4 +203,3 @@ __all__ = [
     "main",
     "validate_bootstrap_password",
 ]
-

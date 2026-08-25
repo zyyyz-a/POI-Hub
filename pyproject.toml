@@ -57,4 +57,3 @@ explicit_package_bases = true
 
 [tool.uv]
 package = true
-

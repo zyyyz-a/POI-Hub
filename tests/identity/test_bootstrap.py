@@ -126,4 +126,3 @@ def test_bootstrap_rejects_short_password() -> None:
 
     with pytest.raises(BootstrapError, match="at least 16"):
         validate_bootstrap_password("too-short")
-
