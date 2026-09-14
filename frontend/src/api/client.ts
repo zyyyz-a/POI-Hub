@@ -337,6 +337,52 @@ export interface RefundRecord {
   updated_at: string
 }
 
+export interface BillingPlanRecord {
+  id: string
+  code: string
+  name: string
+  description: string
+  price: number
+  billing_period: string
+  period_days: number
+  status: string
+  version: number
+}
+
+export interface SubscriptionRecord {
+  id: string
+  tenant_id: string
+  plan_id: string
+  status: string
+  current_period_start: string
+  current_period_end: string
+  grace_until?: string | null
+  version: number
+}
+
+export interface InvoiceRecord {
+  id: string
+  tenant_id: string
+  subscription_id?: string | null
+  invoice_no: string
+  period_start?: string | null
+  period_end?: string | null
+  amount: number
+  paid_amount: number
+  status: string
+  issued_at: string
+  due_at?: string | null
+  version: number
+}
+
+export interface BillingSummaryRecord {
+  subscription: SubscriptionRecord | null
+  plan: BillingPlanRecord | null
+  outstanding_amount: number
+  blocked: boolean
+  blockers: string[]
+}
+
 export class ApiError extends Error {
   status: number
   code?: string
@@ -496,6 +542,18 @@ export const api = {
   directRefunds: () => request<RefundRecord[]>('/api/v1/direct-commerce/refunds'),
   createDirectRefund: (orderId: string, payload: { amount: number; reason?: string; idempotency_key: string }) => request<RefundRecord>(`/api/v1/direct-commerce/orders/${orderId}/refunds`, { method: 'POST', body: JSON.stringify(payload) }),
   queryDirectOrder: (orderId: string) => request<DirectOrderRecord>(`/api/v1/direct-commerce/orders/${orderId}/query`, { method: 'POST', body: '{}' }),
+  billingPlans: () => request<BillingPlanRecord[]>('/api/v1/billing/plans'),
+  createBillingPlan: (payload: Record<string, unknown>) => request<BillingPlanRecord>('/api/v1/billing/plans', { method: 'POST', body: JSON.stringify(payload) }),
+  updateBillingPlan: (planId: string, payload: Record<string, unknown>) => request<BillingPlanRecord>(`/api/v1/billing/plans/${planId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  billingSubscriptions: () => request<SubscriptionRecord[]>('/api/v1/billing/subscriptions'),
+  createBillingSubscription: (payload: Record<string, unknown>) => request<SubscriptionRecord>('/api/v1/billing/subscriptions', { method: 'POST', body: JSON.stringify(payload) }),
+  updateBillingSubscription: (subscriptionId: string, payload: Record<string, unknown>) => request<SubscriptionRecord>(`/api/v1/billing/subscriptions/${subscriptionId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  billingInvoices: () => request<InvoiceRecord[]>('/api/v1/billing/invoices'),
+  generateBillingInvoice: (payload: Record<string, unknown>) => request<InvoiceRecord>('/api/v1/billing/invoices', { method: 'POST', body: JSON.stringify(payload) }),
+  recordBillingUsage: (payload: Record<string, unknown>) => request<unknown>('/api/v1/billing/usage-events', { method: 'POST', body: JSON.stringify(payload) }),
+  recordBillingPayment: (invoiceId: string, payload: Record<string, unknown>) => request<unknown>(`/api/v1/billing/invoices/${invoiceId}/payments`, { method: 'POST', body: JSON.stringify(payload) }),
+  recordBillingAdjustment: (invoiceId: string, payload: Record<string, unknown>) => request<unknown>(`/api/v1/billing/invoices/${invoiceId}/adjustments`, { method: 'POST', body: JSON.stringify(payload) }),
+  billingSummary: () => request<BillingSummaryRecord>('/api/v1/billing/summary'),
 }
 
 export function dashboardValues(payload: DashboardSummary | { summary: DashboardSummary }): DashboardSummary {

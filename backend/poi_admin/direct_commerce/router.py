@@ -545,7 +545,7 @@ async def resolve_store_entry(
         entry = await service.resolve(store_code)
     except DirectCommerceError as error:
         _raise(error)
-    blockers = service.blockers(entry)
+    blockers = await service.blockers(entry)
     return StoreEntryResponse(
         store_code=entry.binding.store_code,
         store_name=entry.store.name,

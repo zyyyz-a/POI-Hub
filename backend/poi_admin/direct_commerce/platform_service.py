@@ -14,6 +14,7 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from poi_admin.billing.service import BillingService
 from poi_admin.connections.crypto import decrypt_secret_bundle, encrypt_secret_bundle
 from poi_admin.connections.models import WeChatConnection
 from poi_admin.connections.ports import Capability, ConnectionMode
@@ -97,7 +98,7 @@ class PlatformCommerceService:
         )
         return StoreEntry(program=program, binding=binding, store=store, profile=profile)
 
-    def blockers(self, entry: StoreEntry) -> list[str]:
+    async def blockers(self, entry: StoreEntry) -> list[str]:
         blockers: list[str] = []
         if entry.program.status != "active":
             blockers.append("平台小程序未启用")
@@ -115,10 +116,15 @@ class PlatformCommerceService:
             blockers.extend(
                 DirectCommerceService.payment_profile_blockers(entry.profile)
             )
+        blockers.extend(
+            await BillingService(self.session).subscription_blockers(
+                entry.binding.tenant_id
+            )
+        )
         return blockers
 
     async def require_tradable(self, entry: StoreEntry) -> None:
-        blockers = self.blockers(entry)
+        blockers = await self.blockers(entry)
         if blockers:
             raise DirectCommerceError(
                 "store_not_tradable", "暂不能营业：" + "、".join(blockers), 409

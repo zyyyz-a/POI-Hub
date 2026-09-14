@@ -12,6 +12,7 @@ from uuid import uuid4
 
 import httpx
 
+from .billing.service import BillingService
 from .core.config import Settings, get_settings
 from .core.database import Database, create_database
 from .direct_commerce.service import DirectCommerceService
@@ -27,6 +28,10 @@ async def _run_maintenance(database: Database, settings: Settings) -> None:
             await DirectCommerceService(session, settings).run_maintenance()
         except Exception:
             logger.exception("direct_commerce_maintenance_failed")
+        try:
+            await BillingService(session).run_maintenance()
+        except Exception:
+            logger.exception("billing_maintenance_failed")
 
 
 async def _run_slot(

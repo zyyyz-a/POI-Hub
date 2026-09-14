@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from .audit.router import audit_router
+from .billing.router import billing_router
 from .connections.router import connection_router
 from .core.config import Settings, get_settings
 from .core.database import create_database
@@ -86,6 +87,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(health_router, prefix="/api/v1")
     application.include_router(license_router, prefix="/api/v1")
     application.include_router(dashboard_router, prefix="/api/v1")
+    application.include_router(billing_router, prefix="/api/v1")
     application.include_router(identity_router, prefix="/api/v1")
     application.include_router(connection_router, prefix="/api/v1")
     application.include_router(operation_router, prefix="/api/v1")
