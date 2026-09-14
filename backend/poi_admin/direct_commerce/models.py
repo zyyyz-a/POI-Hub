@@ -207,8 +207,8 @@ class DirectOrder(Base):
     product_id: Mapped[str] = mapped_column(
         ForeignKey("direct_products.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    consumer_id: Mapped[str] = mapped_column(
-        ForeignKey("consumer_identities.id", ondelete="RESTRICT"), nullable=False, index=True
+    consumer_id: Mapped[str | None] = mapped_column(
+        ForeignKey("consumer_identities.id", ondelete="RESTRICT"), nullable=True, index=True
     )
     platform_mini_program_id: Mapped[str | None] = mapped_column(
         ForeignKey("platform_mini_programs.id", ondelete="SET NULL"), nullable=True, index=True

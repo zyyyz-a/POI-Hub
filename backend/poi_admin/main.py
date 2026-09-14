@@ -16,7 +16,12 @@ from .core.license_router import license_router
 from .core.licensing import license_enforcement_middleware, load_license
 from .core.observability import request_context_middleware
 from .dashboard.router import dashboard_router
-from .direct_commerce.router import consumer_router, direct_commerce_router, payment_notify_router
+from .direct_commerce.router import (
+    consumer_router,
+    direct_commerce_router,
+    payment_notify_router,
+    platform_router,
+)
 from .identity.router import identity_router
 from .local_life.router_accounting import accounting_router
 from .local_life.router_orders import order_router
@@ -94,6 +99,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(onboarding_router, prefix="/api/v1")
     application.include_router(direct_commerce_router, prefix="/api/v1")
     application.include_router(consumer_router, prefix="/api/v1")
+    application.include_router(platform_router, prefix="/api/v1")
     application.include_router(payment_notify_router, prefix="/api/v1")
     return application
 

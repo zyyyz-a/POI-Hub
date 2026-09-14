@@ -27,6 +27,7 @@ from .models import (
     DirectOrder,
     DirectProduct,
     DirectVoucher,
+    MerchantPaymentProfile,
     utcnow,
 )
 from .wechat_pay import (
@@ -525,6 +526,104 @@ class DirectCommerceService:
         await self.session.commit()
         await self.session.refresh(voucher)
         return voucher
+
+    async def list_payment_profiles(self, tenant_id: str) -> list[MerchantPaymentProfile]:
+        rows = await self.session.execute(
+            select(MerchantPaymentProfile)
+            .where(MerchantPaymentProfile.tenant_id == tenant_id)
+            .order_by(MerchantPaymentProfile.updated_at.desc(), MerchantPaymentProfile.id)
+        )
+        return list(rows.scalars().all())
+
+    async def get_payment_profile(self, tenant_id: str, profile_id: str) -> MerchantPaymentProfile:
+        row = await self.session.scalar(
+            select(MerchantPaymentProfile).where(
+                MerchantPaymentProfile.tenant_id == tenant_id,
+                MerchantPaymentProfile.id == profile_id,
+            )
+        )
+        if row is None:
+            raise DirectCommerceError("payment_profile_not_found", "门店支付档案不存在", 404)
+        return row
+
+    async def create_payment_profile(
+        self, tenant_id: str, values: dict[str, Any]
+    ) -> MerchantPaymentProfile:
+        store = await self.session.scalar(
+            select(Store.id).where(
+                Store.tenant_id == tenant_id, Store.id == str(values["store_id"])
+            )
+        )
+        if store is None:
+            raise DirectCommerceError("store_not_found", "门店不存在", 404)
+        await self._validate_payment_connection(tenant_id, values.get("connection_id"))
+        row = MerchantPaymentProfile(tenant_id=tenant_id, **values)
+        self._ensure_payment_profile_ready(row)
+        self.session.add(row)
+        try:
+            await self.session.commit()
+        except IntegrityError as error:
+            await self.session.rollback()
+            raise DirectCommerceError(
+                "payment_profile_exists", "该门店已配置支付档案", 409
+            ) from error
+        await self.session.refresh(row)
+        return row
+
+    async def update_payment_profile(
+        self, tenant_id: str, profile_id: str, version: int, changes: dict[str, Any]
+    ) -> MerchantPaymentProfile:
+        row = await self.get_payment_profile(tenant_id, profile_id)
+        if row.version != version:
+            raise DirectCommerceError("version_conflict", "支付档案已被他人修改，请刷新", 409)
+        if "connection_id" in changes:
+            await self._validate_payment_connection(tenant_id, changes.get("connection_id"))
+        for key, value in changes.items():
+            setattr(row, key, value)
+        self._ensure_payment_profile_ready(row)
+        row.version += 1
+        await self.session.commit()
+        await self.session.refresh(row)
+        return row
+
+    @staticmethod
+    def payment_profile_blockers(row: MerchantPaymentProfile) -> list[str]:
+        blockers: list[str] = []
+        if row.status != "active":
+            blockers.append("门店支付档案未启用")
+        if not row.verified:
+            blockers.append("门店支付归属未核验")
+        if row.mode == "partner":
+            if not row.sp_mchid or not row.sub_mchid:
+                blockers.append("服务商子商户配置缺失")
+        elif not row.mchid:
+            blockers.append("门店普通商户号缺失")
+        return blockers
+
+    def _ensure_payment_profile_ready(self, row: MerchantPaymentProfile) -> None:
+        if row.status == "active":
+            blockers = self.payment_profile_blockers(row)
+            if blockers:
+                raise DirectCommerceError(
+                    "payment_profile_not_ready", "支付档案不能启用，缺少：" + "、".join(blockers)
+                )
+
+    async def _validate_payment_connection(
+        self, tenant_id: str, connection_id: object
+    ) -> WeChatConnection | None:
+        if connection_id in {None, ""}:
+            return None
+        connection = await self.session.scalar(
+            select(WeChatConnection).where(
+                WeChatConnection.tenant_id == tenant_id,
+                WeChatConnection.id == str(connection_id),
+            )
+        )
+        if connection is None:
+            raise DirectCommerceError("connection_not_found", "支付连接不存在", 404)
+        if connection.capability != Capability.MINI_PROGRAM_COMMERCE.value:
+            raise DirectCommerceError("invalid_connection_capability", "必须选择独立小程序交易连接")
+        return connection
 
     async def _ready_app(self, mini_program_id: str) -> MerchantMiniProgram:
         app = await self._tenantless_app(mini_program_id)

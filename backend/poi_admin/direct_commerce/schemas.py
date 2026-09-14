@@ -160,6 +160,59 @@ class VoucherRevokeRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
 
 
+class PaymentProfileCreate(BaseModel):
+    store_id: str = Field(min_length=1, max_length=36)
+    connection_id: str | None = Field(default=None, max_length=36)
+    mode: Literal["ordinary", "partner"] = "ordinary"
+    mchid: str | None = Field(default=None, max_length=128)
+    sub_mchid: str | None = Field(default=None, max_length=128)
+    sp_mchid: str | None = Field(default=None, max_length=128)
+    verified: bool = False
+    status: Literal["draft", "active", "disabled"] = "draft"
+
+
+class PaymentProfileUpdate(BaseModel):
+    connection_id: str | None = Field(default=None, max_length=36)
+    mode: Literal["ordinary", "partner"] | None = None
+    mchid: str | None = Field(default=None, max_length=128)
+    sub_mchid: str | None = Field(default=None, max_length=128)
+    sp_mchid: str | None = Field(default=None, max_length=128)
+    verified: bool | None = None
+    status: Literal["draft", "active", "disabled"] | None = None
+    version: int = Field(ge=1)
+
+
+class PaymentProfileResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    tenant_id: str
+    store_id: str
+    connection_id: str | None
+    mode: str
+    mchid: str | None
+    sub_mchid: str | None
+    sp_mchid: str | None
+    verified: bool
+    status: str
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class StoreEntryResponse(BaseModel):
+    store_code: str
+    store_name: str
+    address: str
+    city: str | None
+    district: str | None
+    contact_phone_masked: str | None
+    latitude: float | None
+    longitude: float | None
+    tradable: bool
+    blockers: list[str]
+
+
 __all__ = [
     "AppointmentCreate",
     "AppointmentResponse",
@@ -170,8 +223,12 @@ __all__ = [
     "DirectProductCreate",
     "DirectProductResponse",
     "DirectProductUpdate",
+    "PaymentProfileCreate",
+    "PaymentProfileResponse",
+    "PaymentProfileUpdate",
     "PaymentRequest",
     "PaymentResponse",
+    "StoreEntryResponse",
     "VoucherConsumeRequest",
     "VoucherResponse",
     "VoucherRevokeRequest",

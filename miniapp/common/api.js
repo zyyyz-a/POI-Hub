@@ -5,6 +5,16 @@ try {
   config = require('../config.example')
 }
 
+function storeCode() {
+  const app = getApp && getApp()
+  const fromApp = app && app.globalData ? app.globalData.storeCode : ''
+  return fromApp || config.storeCode || ''
+}
+
+function root() {
+  return `/public/platform/stores/${storeCode()}`
+}
+
 function request(path, options = {}) {
   return new Promise((resolve, reject) => {
     const token = getApp && getApp().globalData.accessToken
@@ -22,15 +32,14 @@ function request(path, options = {}) {
   })
 }
 
-const root = `/public/mini-programs/${config.miniProgramId}`
-
 module.exports = {
-  miniProgramId: config.miniProgramId,
-  login: code => request(`${root}/login`, { method: 'POST', data: { code } }),
-  products: () => request(`${root}/products`),
-  createOrder: data => request(`${root}/orders`, { method: 'POST', data }),
-  getOrder: orderId => request(`${root}/orders/${orderId}`),
-  pay: orderId => request(`${root}/orders/${orderId}/pay`, { method: 'POST', data: {} }),
-  voucher: orderId => request(`${root}/orders/${orderId}/voucher`),
-  appoint: (orderId, data) => request(`${root}/orders/${orderId}/appointment`, { method: 'POST', data })
+  storeCode,
+  login: code => request(`${root()}/login`, { method: 'POST', data: { code } }),
+  store: () => request(root()),
+  products: () => request(`${root()}/products`),
+  createOrder: data => request(`${root()}/orders`, { method: 'POST', data }),
+  getOrder: orderId => request(`${root()}/orders/${orderId}`),
+  pay: orderId => request(`${root()}/orders/${orderId}/pay`, { method: 'POST', data: {} }),
+  voucher: orderId => request(`${root()}/orders/${orderId}/voucher`),
+  appoint: (orderId, data) => request(`${root()}/orders/${orderId}/appointment`, { method: 'POST', data })
 }

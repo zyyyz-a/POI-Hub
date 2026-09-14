@@ -190,6 +190,76 @@ class OnboardingReadinessResponse(BaseModel):
     checks: dict[str, bool]
 
 
+class PlatformMiniProgramCreate(BaseModel):
+    connection_id: str | None = Field(default=None, max_length=36)
+    name: str = Field(min_length=1, max_length=160)
+    app_id: str | None = Field(default=None, max_length=128)
+    owner_subject: str = Field(min_length=1, max_length=200)
+    callback_configured: bool = False
+
+
+class PlatformMiniProgramUpdate(BaseModel):
+    connection_id: str | None = Field(default=None, max_length=36)
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    app_id: str | None = Field(default=None, max_length=128)
+    callback_configured: bool | None = None
+    status: Literal["draft", "active", "suspended"] | None = None
+    version: int = Field(ge=1)
+
+
+class PlatformMiniProgramResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    app_id: str | None
+    owner_subject: str
+    connection_id: str | None
+    status: str
+    callback_configured: bool
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class StoreBindingCreate(BaseModel):
+    platform_mini_program_id: str = Field(min_length=1, max_length=36)
+    store_id: str = Field(min_length=1, max_length=36)
+    store_code: str = Field(min_length=3, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    tencent_poi_id: str | None = Field(default=None, max_length=160)
+    entry_path: str | None = Field(default=None, max_length=500)
+    entry_scene: str | None = Field(default=None, max_length=200)
+
+
+class StoreBindingUpdate(BaseModel):
+    tencent_poi_id: str | None = Field(default=None, max_length=160)
+    entry_path: str | None = Field(default=None, max_length=500)
+    entry_scene: str | None = Field(default=None, max_length=200)
+    status: Literal["draft", "active", "suspended"] | None = None
+    official_reference: str | None = Field(default=None, max_length=200)
+    evidence_reference: str | None = Field(default=None, max_length=500)
+    version: int = Field(ge=1)
+
+
+class StoreBindingResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    platform_mini_program_id: str
+    tenant_id: str
+    store_id: str
+    store_code: str
+    tencent_poi_id: str | None
+    entry_path: str | None
+    entry_scene: str | None
+    status: str
+    official_reference: str | None
+    evidence_reference: str | None
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
 __all__ = [
     "MiniProgramCreate",
     "MiniProgramResponse",
@@ -199,9 +269,15 @@ __all__ = [
     "OnboardingCaseCreate",
     "OnboardingCaseResponse",
     "OnboardingReadinessResponse",
+    "PlatformMiniProgramCreate",
+    "PlatformMiniProgramResponse",
+    "PlatformMiniProgramUpdate",
     "PositionServiceCreate",
     "PositionServiceResponse",
     "PositionServiceTransition",
     "PrecheckRequest",
     "QualificationItem",
+    "StoreBindingCreate",
+    "StoreBindingResponse",
+    "StoreBindingUpdate",
 ]

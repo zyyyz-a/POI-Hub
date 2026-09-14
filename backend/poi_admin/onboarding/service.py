@@ -13,7 +13,14 @@ from poi_admin.connections.models import WeChatConnection
 from poi_admin.connections.ports import Capability
 from poi_admin.stores.models import ServicePoi, Store
 
-from .models import MerchantMiniProgram, MerchantOnboardingCase, PositionServiceMount, utcnow
+from .models import (
+    MerchantMiniProgram,
+    MerchantOnboardingCase,
+    MiniProgramStoreBinding,
+    PlatformMiniProgram,
+    PositionServiceMount,
+    utcnow,
+)
 
 DEFAULT_REQUIREMENTS: tuple[dict[str, Any], ...] = (
     {
@@ -372,6 +379,157 @@ class OnboardingService:
         await self.session.refresh(row)
         return row
 
+    async def list_platform_mini_programs(self) -> list[PlatformMiniProgram]:
+        rows = await self.session.execute(
+            select(PlatformMiniProgram).order_by(
+                PlatformMiniProgram.updated_at.desc(), PlatformMiniProgram.id
+            )
+        )
+        return list(rows.scalars().all())
+
+    async def get_platform_mini_program(self, program_id: str) -> PlatformMiniProgram:
+        row = await self.session.scalar(
+            select(PlatformMiniProgram).where(PlatformMiniProgram.id == program_id)
+        )
+        if row is None:
+            raise OnboardingError("platform_mini_program_not_found", "平台小程序不存在", 404)
+        return row
+
+    async def create_platform_mini_program(
+        self, actor_user_id: str, values: dict[str, Any]
+    ) -> PlatformMiniProgram:
+        await self._validate_platform_connection(values.get("connection_id"))
+        row = PlatformMiniProgram(
+            created_by_user_id=actor_user_id,
+            updated_by_user_id=actor_user_id,
+            **values,
+        )
+        self.session.add(row)
+        try:
+            await self.session.commit()
+        except IntegrityError as error:
+            await self.session.rollback()
+            raise OnboardingError("platform_app_id_exists", "该平台 AppID 已登记", 409) from error
+        await self.session.refresh(row)
+        return row
+
+    async def update_platform_mini_program(
+        self,
+        program_id: str,
+        actor_user_id: str,
+        version: int,
+        changes: dict[str, Any],
+    ) -> PlatformMiniProgram:
+        row = await self.get_platform_mini_program(program_id)
+        if row.version != version:
+            raise OnboardingError("version_conflict", "平台小程序已被他人修改，请刷新", 409)
+        if "connection_id" in changes:
+            await self._validate_platform_connection(changes.get("connection_id"))
+        for key, value in changes.items():
+            setattr(row, key, value)
+        if row.status == "active":
+            missing = []
+            if not row.connection_id:
+                missing.append("平台小程序交易连接")
+            if not row.app_id:
+                missing.append("AppID")
+            if not row.callback_configured:
+                missing.append("支付回调")
+            if missing:
+                raise OnboardingError(
+                    "platform_mini_program_not_ready",
+                    "平台小程序不能启用，缺少：" + "、".join(missing),
+                )
+        row.updated_by_user_id = actor_user_id
+        row.version += 1
+        try:
+            await self.session.commit()
+        except IntegrityError as error:
+            await self.session.rollback()
+            raise OnboardingError("platform_app_id_exists", "该平台 AppID 已登记", 409) from error
+        await self.session.refresh(row)
+        return row
+
+    async def list_bindings(self, tenant_id: str) -> list[MiniProgramStoreBinding]:
+        rows = await self.session.execute(
+            select(MiniProgramStoreBinding)
+            .where(MiniProgramStoreBinding.tenant_id == tenant_id)
+            .order_by(MiniProgramStoreBinding.updated_at.desc(), MiniProgramStoreBinding.id)
+        )
+        return list(rows.scalars().all())
+
+    async def get_binding(self, tenant_id: str, binding_id: str) -> MiniProgramStoreBinding:
+        row = await self.session.scalar(
+            select(MiniProgramStoreBinding).where(
+                MiniProgramStoreBinding.tenant_id == tenant_id,
+                MiniProgramStoreBinding.id == binding_id,
+            )
+        )
+        if row is None:
+            raise OnboardingError("store_binding_not_found", "门店入口绑定不存在", 404)
+        return row
+
+    async def create_binding(
+        self, tenant_id: str, actor_user_id: str, values: dict[str, Any]
+    ) -> MiniProgramStoreBinding:
+        await self.get_platform_mini_program(str(values["platform_mini_program_id"]))
+        store_id = str(values["store_id"])
+        if not await self._store_exists(tenant_id, store_id):
+            raise OnboardingError("store_not_found", "门店不存在", 404)
+        row = MiniProgramStoreBinding(
+            tenant_id=tenant_id,
+            created_by_user_id=actor_user_id,
+            updated_by_user_id=actor_user_id,
+            **values,
+        )
+        self._ensure_binding_ready(row)
+        self.session.add(row)
+        try:
+            await self.session.commit()
+        except IntegrityError as error:
+            await self.session.rollback()
+            raise OnboardingError(
+                "store_binding_exists", "该门店或入口编码已绑定平台小程序", 409
+            ) from error
+        await self.session.refresh(row)
+        return row
+
+    async def update_binding(
+        self,
+        tenant_id: str,
+        binding_id: str,
+        actor_user_id: str,
+        version: int,
+        changes: dict[str, Any],
+    ) -> MiniProgramStoreBinding:
+        row = await self.get_binding(tenant_id, binding_id)
+        if row.version != version:
+            raise OnboardingError("version_conflict", "门店入口绑定已被他人修改，请刷新", 409)
+        for key, value in changes.items():
+            setattr(row, key, value)
+        self._ensure_binding_ready(row)
+        row.updated_by_user_id = actor_user_id
+        row.version += 1
+        await self.session.commit()
+        await self.session.refresh(row)
+        return row
+
+    @staticmethod
+    def _ensure_binding_ready(row: MiniProgramStoreBinding) -> None:
+        if row.status != "active":
+            return
+        missing = []
+        if not row.tencent_poi_id:
+            missing.append("腾讯地图 POI 标识")
+        if not row.official_reference:
+            missing.append("官方审核编号")
+        if not row.evidence_reference:
+            missing.append("官方审核凭证")
+        if missing:
+            raise OnboardingError(
+                "store_binding_not_ready", "门店入口不能启用，缺少：" + "、".join(missing)
+            )
+
     async def list_mounts(self, tenant_id: str) -> list[PositionServiceMount]:
         rows = await self.session.execute(
             select(PositionServiceMount)
@@ -566,6 +724,20 @@ class OnboardingService:
         ).scalar_one_or_none()
         if connection is None:
             raise OnboardingError("connection_not_found", "小程序交易连接不存在", 404)
+        if connection.capability != Capability.MINI_PROGRAM_COMMERCE.value:
+            raise OnboardingError("invalid_connection_capability", "必须选择独立小程序交易连接")
+        return connection
+
+    async def _validate_platform_connection(
+        self, connection_id: object
+    ) -> WeChatConnection | None:
+        if connection_id in {None, ""}:
+            return None
+        connection = await self.session.scalar(
+            select(WeChatConnection).where(WeChatConnection.id == str(connection_id))
+        )
+        if connection is None:
+            raise OnboardingError("connection_not_found", "平台小程序交易连接不存在", 404)
         if connection.capability != Capability.MINI_PROGRAM_COMMERCE.value:
             raise OnboardingError("invalid_connection_capability", "必须选择独立小程序交易连接")
         return connection

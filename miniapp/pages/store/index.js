@@ -1,13 +1,19 @@
 const api = require('../../common/api')
 
 Page({
-  data: { products: [], loading: true },
+  data: { store: null, products: [], blocked: '', loading: true },
   async onShow() {
     try {
       await getApp().ensureLogin()
-      const products = await api.products()
+      const store = await api.store()
+      const products = store.tradable ? await api.products() : []
       getApp().globalData.products = products
-      this.setData({ products, loading: false })
+      this.setData({
+        store,
+        products,
+        loading: false,
+        blocked: store.tradable ? '' : (store.blockers || []).join('、')
+      })
     } catch (error) {
       this.setData({ loading: false })
       wx.showToast({ title: error.message || '加载失败', icon: 'none' })

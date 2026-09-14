@@ -1,8 +1,28 @@
 const api = require('./common/api')
 
+function defaultStoreCode() {
+  try {
+    return require('./config').storeCode || ''
+  } catch (error) {
+    return require('./config.example').storeCode || ''
+  }
+}
+
+function parseStoreCode(options) {
+  const query = (options && options.query) || {}
+  if (query.store_code) return String(query.store_code)
+  if (query.scene) {
+    const scene = decodeURIComponent(String(query.scene))
+    const match = scene.match(/(?:^|&)store_code=([^&]+)/)
+    return match ? match[1] : scene
+  }
+  return defaultStoreCode()
+}
+
 App({
-  globalData: { accessToken: '', products: [], currentOrder: null },
-  onLaunch() {
+  globalData: { accessToken: '', storeCode: '', products: [], currentOrder: null },
+  onLaunch(options) {
+    this.globalData.storeCode = parseStoreCode(options)
     wx.login({
       success: async ({ code }) => {
         try {
