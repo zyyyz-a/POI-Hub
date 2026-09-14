@@ -94,6 +94,7 @@ class DirectOrderResponse(BaseModel):
     unit_amount: int
     total_amount: int
     paid_amount: int
+    refunded_amount: int
     status: str
     expires_at: datetime
     paid_at: datetime | None

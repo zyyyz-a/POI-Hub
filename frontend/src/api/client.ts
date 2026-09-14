@@ -252,6 +252,7 @@ export interface DirectOrderRecord {
   quantity: number
   total_amount: number
   paid_amount: number
+  refunded_amount: number
   status: string
   created_at: string
   paid_at?: string | null
@@ -278,6 +279,62 @@ export interface DirectVoucherRecord {
   consume_store_id?: string | null
   consumed_at?: string | null
   version: number
+}
+
+export interface PlatformMiniProgramRecord {
+  id: string
+  name: string
+  app_id?: string | null
+  owner_subject: string
+  connection_id?: string | null
+  status: string
+  callback_configured: boolean
+  version: number
+}
+
+export interface StoreBindingRecord {
+  id: string
+  platform_mini_program_id: string
+  tenant_id: string
+  store_id: string
+  store_code: string
+  tencent_poi_id?: string | null
+  entry_path?: string | null
+  entry_scene?: string | null
+  status: string
+  official_reference?: string | null
+  evidence_reference?: string | null
+  version: number
+}
+
+export interface PaymentProfileRecord {
+  id: string
+  tenant_id: string
+  store_id: string
+  connection_id?: string | null
+  mode: string
+  mchid?: string | null
+  sub_mchid?: string | null
+  sp_mchid?: string | null
+  verified: boolean
+  status: string
+  version: number
+}
+
+export interface RefundRecord {
+  id: string
+  tenant_id: string
+  order_id: string
+  store_id: string
+  refund_no: string
+  amount: number
+  reason?: string | null
+  status: string
+  transaction_id?: string | null
+  wechat_refund_id?: string | null
+  version: number
+  created_at: string
+  updated_at: string
 }
 
 export class ApiError extends Error {
@@ -427,6 +484,18 @@ export const api = {
   directVouchers: () => request<DirectVoucherRecord[]>('/api/v1/direct-commerce/vouchers'),
   consumeDirectVoucher: (payload: { code: string; store_id: string }) => request<DirectVoucherRecord>('/api/v1/direct-commerce/vouchers/consume', { method: 'POST', body: JSON.stringify(payload) }),
   revokeDirectVoucher: (voucherId: string, payload: { version: number; reason: string }) => request<DirectVoucherRecord>(`/api/v1/direct-commerce/vouchers/${voucherId}/revoke`, { method: 'POST', body: JSON.stringify(payload) }),
+  platformMiniPrograms: () => request<PlatformMiniProgramRecord[]>('/api/v1/platform/mini-programs'),
+  createPlatformMiniProgram: (payload: Record<string, unknown>) => request<PlatformMiniProgramRecord>('/api/v1/platform/mini-programs', { method: 'POST', body: JSON.stringify(payload) }),
+  updatePlatformMiniProgram: (programId: string, payload: Record<string, unknown>) => request<PlatformMiniProgramRecord>(`/api/v1/platform/mini-programs/${programId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  storeBindings: () => request<StoreBindingRecord[]>('/api/v1/store-bindings'),
+  createStoreBinding: (payload: Record<string, unknown>) => request<StoreBindingRecord>('/api/v1/store-bindings', { method: 'POST', body: JSON.stringify(payload) }),
+  updateStoreBinding: (bindingId: string, payload: Record<string, unknown>) => request<StoreBindingRecord>(`/api/v1/store-bindings/${bindingId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  paymentProfiles: () => request<PaymentProfileRecord[]>('/api/v1/direct-commerce/payment-profiles'),
+  createPaymentProfile: (payload: Record<string, unknown>) => request<PaymentProfileRecord>('/api/v1/direct-commerce/payment-profiles', { method: 'POST', body: JSON.stringify(payload) }),
+  updatePaymentProfile: (profileId: string, payload: Record<string, unknown>) => request<PaymentProfileRecord>(`/api/v1/direct-commerce/payment-profiles/${profileId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  directRefunds: () => request<RefundRecord[]>('/api/v1/direct-commerce/refunds'),
+  createDirectRefund: (orderId: string, payload: { amount: number; reason?: string; idempotency_key: string }) => request<RefundRecord>(`/api/v1/direct-commerce/orders/${orderId}/refunds`, { method: 'POST', body: JSON.stringify(payload) }),
+  queryDirectOrder: (orderId: string) => request<DirectOrderRecord>(`/api/v1/direct-commerce/orders/${orderId}/query`, { method: 'POST', body: '{}' }),
 }
 
 export function dashboardValues(payload: DashboardSummary | { summary: DashboardSummary }): DashboardSummary {

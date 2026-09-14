@@ -21,8 +21,10 @@ export function DirectCommercePage() {
   const client = useQueryClient()
   const [productModal, setProductModal] = useState(false)
   const [consumeModal, setConsumeModal] = useState(false)
+  const [refundModal, setRefundModal] = useState<DirectOrderRecord | null>(null)
   const [form] = Form.useForm()
   const [consumeForm] = Form.useForm()
+  const [refundForm] = Form.useForm()
   const products = useQuery({ queryKey: ['direct-products', tenant?.id], queryFn: api.directProducts, enabled: Boolean(tenant) })
   const orders = useQuery({ queryKey: ['direct-orders', tenant?.id], queryFn: api.directOrders, enabled: Boolean(tenant) })
   const appointments = useQuery({ queryKey: ['direct-appointments', tenant?.id], queryFn: api.directAppointments, enabled: Boolean(tenant) })
@@ -54,6 +56,18 @@ export function DirectCommercePage() {
     mutationFn: (row: DirectVoucherRecord) => api.revokeDirectVoucher(row.id, { version: row.version, reason: '后台确认撤销误核销' }),
     onSuccess: refresh,
   })
+  const refund = useMutation({
+    mutationFn: (values: { amount_yuan: number; reason?: string }) => api.createDirectRefund(refundModal!.id, {
+      amount: Math.round(Number(values.amount_yuan) * 100),
+      reason: values.reason ? String(values.reason) : undefined,
+      idempotency_key: `ui-refund-${refundModal!.id}-${Date.now()}`,
+    }),
+    onSuccess: async () => { setRefundModal(null); refundForm.resetFields(); await refresh() },
+  })
+  const queryOrder = useMutation({
+    mutationFn: (row: DirectOrderRecord) => api.queryDirectOrder(row.id),
+    onSuccess: refresh,
+  })
   const storeNames = useMemo(() => new Map((stores.data || []).map(item => [item.id, item.name])), [stores.data])
 
   const productColumns = [
@@ -69,8 +83,13 @@ export function DirectCommercePage() {
     { title: '商品', dataIndex: 'product_name' },
     { title: '数量', dataIndex: 'quantity' },
     { title: '实付', dataIndex: 'paid_amount', render: (value: number) => money(value) },
-    { title: '状态', dataIndex: 'status', render: (value: string) => <Tag color={value === 'paid' ? 'green' : 'orange'}>{value}</Tag> },
+    { title: '已退', dataIndex: 'refunded_amount', render: (value: number) => value ? money(value) : '-' },
+    { title: '状态', dataIndex: 'status', render: (value: string) => <Tag color={value === 'paid' ? 'green' : value === 'refunded' ? 'red' : 'orange'}>{value === 'refunded' ? '已退款' : value === 'partially_refunded' ? '部分退款' : value === 'expired' ? '已关闭' : value}</Tag> },
     { title: '下单时间', dataIndex: 'created_at', render: time },
+    { title: '操作', render: (_: unknown, row: DirectOrderRecord) => <Space>
+      <Button size="small" onClick={() => queryOrder.mutate(row)}>主动查单</Button>
+      {['paid', 'partially_refunded'].includes(row.status) && <Button size="small" danger onClick={() => { setRefundModal(row); refundForm.setFieldsValue({ amount_yuan: (row.total_amount - row.refunded_amount) / 100 }) }}>退款</Button>}
+    </Space> },
   ]
   const appointmentColumns = [
     { title: '预约时间', dataIndex: 'starts_at', render: time },
@@ -81,7 +100,7 @@ export function DirectCommercePage() {
   ]
   const voucherColumns = [
     { title: '券码', dataIndex: 'code_masked' },
-    { title: '状态', dataIndex: 'state', render: (value: string) => <Tag color={value === 'available' ? 'green' : 'blue'}>{value === 'available' ? '可使用' : '已核销'}</Tag> },
+    { title: '状态', dataIndex: 'state', render: (value: string) => <Tag color={value === 'available' ? 'green' : value === 'refunded' ? 'red' : 'blue'}>{value === 'available' ? '可使用' : value === 'refunded' ? '已退款' : '已核销'}</Tag> },
     { title: '核销门店', dataIndex: 'consume_store_id', render: (value?: string) => value ? storeNames.get(value) || value : '-' },
     { title: '有效期', dataIndex: 'valid_until', render: time },
     { title: '操作', render: (_: unknown, row: DirectVoucherRecord) => row.state === 'consumed' ? <Button size="small" danger onClick={() => Modal.confirm({ title: '确认撤销本次核销？', onOk: () => revoke.mutateAsync(row) })}>撤销误核销</Button> : '-' },
@@ -105,5 +124,11 @@ export function DirectCommercePage() {
       {createProduct.isError && <p className="form-error">{createProduct.error.message}</p>}<Button block type="primary" htmlType="submit" loading={createProduct.isPending}>保存草稿</Button>
     </Form></Modal>
     <Modal title="核销顾客券码" open={consumeModal} onCancel={() => setConsumeModal(false)} footer={null}><Form form={consumeForm} layout="vertical" onFinish={values => consume.mutate(values)}><Form.Item name="store_id" label="实际核销门店" rules={[{ required: true }]}><Select options={(stores.data || []).map(item => ({ value: item.id, label: item.name }))} /></Form.Item><Form.Item name="code" label="顾客完整券码" rules={[{ required: true }]}><Input autoComplete="off" /></Form.Item>{consume.isError && <p className="form-error">{consume.error.message}</p>}<Button block type="primary" htmlType="submit" loading={consume.isPending}>确认核销</Button></Form></Modal>
+    <Modal title="发起退款" open={Boolean(refundModal)} onCancel={() => { setRefundModal(null); refundForm.resetFields() }} footer={null}><Form form={refundForm} layout="vertical" onFinish={values => refund.mutate(values)}>
+      <Alert type="warning" showIcon message={`订单 ${refundModal?.order_no || ''} 实付 ${refundModal ? money(refundModal.total_amount) : ''}，已退 ${refundModal ? money(refundModal.refunded_amount) : ''}`} />
+      <Form.Item name="amount_yuan" label="退款金额（元）" rules={[{ required: true }]}><InputNumber min={0.01} precision={2} style={{ width: '100%' }} /></Form.Item>
+      <Form.Item name="reason" label="退款原因"><Input.TextArea /></Form.Item>
+      {refund.isError && <p className="form-error">{refund.error.message}</p>}<Button block type="primary" htmlType="submit" loading={refund.isPending}>确认退款</Button>
+    </Form></Modal>
   </section>
 }
