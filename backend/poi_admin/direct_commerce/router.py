@@ -629,6 +629,24 @@ async def platform_create_appointment(
     return AppointmentResponse.model_validate(row)
 
 
+@platform_router.post("/wechatpay/notify/{payment_profile_id}")
+async def platform_payment_notification(
+    payment_profile_id: str,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> JSONResponse:
+    body = await request.body()
+    try:
+        await _platform_service(request, session).handle_payment_notification(
+            payment_profile_id, dict(request.headers), body
+        )
+    except DirectCommerceError as error:
+        return JSONResponse(
+            status_code=error.status_code, content={"code": "FAIL", "message": error.message}
+        )
+    return JSONResponse(content={"code": "SUCCESS", "message": "成功"})
+
+
 @payment_notify_router.post("/notify/{mini_program_id}")
 async def payment_notification(
     mini_program_id: str,

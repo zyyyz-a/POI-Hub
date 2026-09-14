@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -31,7 +32,12 @@ from .models import (
     utcnow,
 )
 from .service import DirectCommerceError, DirectCommerceService, _aware, _hash, _masked_phone
-from .wechat_pay import WeChatPayClient, WeChatPayError
+from .wechat_pay import (
+    WeChatPayClient,
+    WeChatPayError,
+    decrypt_notification_resource,
+    verify_notification,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +46,14 @@ class StoreEntry:
     binding: MiniProgramStoreBinding
     store: Store
     profile: MerchantPaymentProfile | None
+
+
+@dataclass(frozen=True, slots=True)
+class PaymentRoute:
+    merchant_id: str
+    app_id: str
+    sub_mchid: str | None
+    sp_mchid: str | None
 
 
 class PlatformCommerceService:
@@ -302,6 +316,7 @@ class PlatformCommerceService:
         if entry.profile is None:
             raise DirectCommerceError("payment_profile_required", "门店支付档案未配置", 409)
         connection = await self._profile_connection(entry.profile)
+        route = self._payment_route(entry, connection)
         if connection.mode == ConnectionMode.MOCK.value:
             voucher_code = await self._mark_paid(
                 order, transaction_id="MOCK" + secrets.token_hex(10).upper()
@@ -312,8 +327,8 @@ class PlatformCommerceService:
         bundle = self._secrets(connection)
         try:
             payment = await WeChatPayClient(self.http_client).create_jsapi_order(
-                app_id=self._required_value(entry.program.app_id, "平台小程序 AppID"),
-                merchant_id=self._required_value(entry.profile.mchid, "微信支付商户号"),
+                app_id=route.app_id,
+                merchant_id=route.merchant_id,
                 merchant_serial_no=self._required(bundle, "merchant_serial_no", "商户证书序列号"),
                 merchant_private_key_pem=self._required(
                     bundle, "merchant_private_key_pem", "微信支付商户私钥"
@@ -326,6 +341,8 @@ class PlatformCommerceService:
                 amount=order.total_amount,
                 openid=self._openid(consumer),
                 notify_url=self._required(bundle, "notify_url", "支付通知地址"),
+                sub_mchid=route.sub_mchid,
+                sp_mchid=route.sp_mchid,
             )
         except WeChatPayError as error:
             raise DirectCommerceError(error.code, error.message, error.status_code) from error
@@ -333,6 +350,118 @@ class PlatformCommerceService:
         await self.session.commit()
         await self.session.refresh(order)
         return order, payment.parameters, None
+
+    def _payment_route(
+        self, entry: StoreEntry, connection: WeChatConnection
+    ) -> PaymentRoute:
+        profile = entry.profile
+        assert profile is not None
+        if profile.mode == "partner":
+            if not profile.sp_mchid or not profile.sub_mchid:
+                raise DirectCommerceError(
+                    "payment_profile_not_ready", "服务商子商户配置缺失", 409
+                )
+            if connection.merchant_id and connection.merchant_id != profile.sp_mchid:
+                raise DirectCommerceError(
+                    "payment_profile_mismatch", "支付连接服务商号与门店支付档案不一致", 409
+                )
+            return PaymentRoute(
+                merchant_id=profile.sp_mchid,
+                app_id=self._required_value(entry.program.app_id, "平台小程序 AppID"),
+                sub_mchid=profile.sub_mchid,
+                sp_mchid=profile.sp_mchid,
+            )
+        if not profile.mchid:
+            raise DirectCommerceError("payment_profile_not_ready", "门店普通商户号缺失", 409)
+        if connection.merchant_id and connection.merchant_id != profile.mchid:
+            raise DirectCommerceError(
+                "payment_profile_mismatch", "支付连接商户号与门店支付档案不一致", 409
+            )
+        if (
+            connection.app_id
+            and entry.program.app_id
+            and connection.app_id != entry.program.app_id
+        ):
+            raise DirectCommerceError(
+                "payment_appid_mismatch", "支付连接 AppID 与平台小程序未绑定", 409
+            )
+        return PaymentRoute(
+            merchant_id=profile.mchid,
+            app_id=self._required_value(entry.program.app_id, "平台小程序 AppID"),
+            sub_mchid=None,
+            sp_mchid=None,
+        )
+
+    async def handle_payment_notification(
+        self, payment_profile_id: str, headers: dict[str, str], body: bytes
+    ) -> None:
+        profile = await self.session.scalar(
+            select(MerchantPaymentProfile).where(
+                MerchantPaymentProfile.id == payment_profile_id
+            )
+        )
+        if profile is None:
+            raise DirectCommerceError("payment_profile_not_found", "门店支付档案不存在", 404)
+        connection = await self._profile_connection(profile)
+        if connection.mode != ConnectionMode.LIVE.value:
+            raise DirectCommerceError(
+                "live_connection_required", "模拟连接不接收支付通知", 409
+            )
+        bundle = self._secrets(connection)
+        public_key = self._required(bundle, "wechatpay_public_key_pem", "微信支付公钥")
+        try:
+            verify_notification(headers, body, public_key)
+            payload = cast(dict[str, Any], json.loads(body))
+            resource = payload.get("resource")
+            if not isinstance(resource, dict):
+                raise WeChatPayError("wechatpay_resource_missing", "支付通知缺少资源", 400)
+            transaction = decrypt_notification_resource(
+                resource, self._required(bundle, "api_v3_key", "APIv3 密钥")
+            )
+        except (ValueError, WeChatPayError) as error:
+            if isinstance(error, WeChatPayError):
+                raise DirectCommerceError(error.code, error.message, error.status_code) from error
+            raise DirectCommerceError(
+                "wechatpay_notification_invalid", "支付通知格式无效", 400
+            ) from error
+        if transaction.get("trade_state") != "SUCCESS":
+            return
+        order_no = transaction.get("out_trade_no")
+        order = await self.session.scalar(
+            select(DirectOrder)
+            .where(
+                DirectOrder.order_no == order_no,
+                DirectOrder.payment_profile_id == profile.id,
+            )
+            .with_for_update()
+        )
+        if order is None:
+            raise DirectCommerceError("order_not_found", "支付通知对应订单不存在", 404)
+        program = await self.session.scalar(
+            select(PlatformMiniProgram).where(
+                PlatformMiniProgram.id == order.platform_mini_program_id
+            )
+        )
+        tx_appid = transaction.get("appid") or transaction.get("sp_appid")
+        tx_mchid = transaction.get("mchid") or transaction.get("sp_mchid")
+        tx_sub_mchid = transaction.get("sub_mchid")
+        amount = transaction.get("amount")
+        total = amount.get("total") if isinstance(amount, dict) else None
+        if (
+            program is None
+            or tx_appid != program.app_id
+            or tx_mchid != order.mchid_snapshot
+            or tx_sub_mchid != order.sub_mchid_snapshot
+            or total != order.total_amount
+        ):
+            raise DirectCommerceError("payment_identity_mismatch", "支付通知身份或金额不匹配", 400)
+        if order.status == "paid":
+            return
+        transaction_id = transaction.get("transaction_id")
+        if not isinstance(transaction_id, str) or not transaction_id:
+            raise DirectCommerceError("transaction_id_missing", "支付通知缺少交易号", 400)
+        await self._mark_paid(order, transaction_id=transaction_id)
+        await self.session.commit()
 
     async def consumer_voucher(
         self, store_code: str, consumer_id: str, order_id: str
@@ -524,4 +653,4 @@ class PlatformCommerceService:
         return self._required(value, "code", "券码")
 
 
-__all__ = ["PlatformCommerceService", "StoreEntry"]
+__all__ = ["PaymentRoute", "PlatformCommerceService", "StoreEntry"]

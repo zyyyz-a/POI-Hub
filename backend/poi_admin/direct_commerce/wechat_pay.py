@@ -137,37 +137,30 @@ class MiniProgramPayment:
     parameters: dict[str, str]
 
 
+@dataclass(frozen=True, slots=True)
+class RefundResult:
+    refund_id: str
+    status: str
+    raw: dict[str, Any]
+
+
 class WeChatPayClient:
     def __init__(self, http_client: httpx.AsyncClient | None = None) -> None:
         self.http_client = http_client
 
-    async def create_jsapi_order(
+    async def _call(
         self,
+        method: str,
+        path: str,
         *,
-        app_id: str,
+        body: str,
         merchant_id: str,
         merchant_serial_no: str,
         merchant_private_key_pem: str,
         wechatpay_public_key_pem: str,
-        order_no: str,
-        description: str,
-        amount: int,
-        openid: str,
-        notify_url: str,
-    ) -> MiniProgramPayment:
-        path = "/v3/pay/transactions/jsapi"
-        payload = {
-            "appid": app_id,
-            "mchid": merchant_id,
-            "description": description[:127],
-            "out_trade_no": order_no,
-            "notify_url": notify_url,
-            "amount": {"total": amount, "currency": "CNY"},
-            "payer": {"openid": openid},
-        }
-        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    ) -> dict[str, Any]:
         authorization = authorization_header(
-            "POST",
+            method,
             path,
             body,
             merchant_id=merchant_id,
@@ -183,8 +176,11 @@ class WeChatPayClient:
         owns_client = self.http_client is None
         client = self.http_client or httpx.AsyncClient(timeout=15.0)
         try:
-            response = await client.post(
-                "https://api.mch.weixin.qq.com" + path, headers=headers, content=body
+            response = await client.request(
+                method,
+                "https://api.mch.weixin.qq.com" + path,
+                headers=headers,
+                content=body.encode("utf-8") if body else None,
             )
         except httpx.HTTPError as error:
             raise WeChatPayError("wechatpay_unavailable", "无法连接微信支付") from error
@@ -193,9 +189,61 @@ class WeChatPayClient:
                 await client.aclose()
         verify_http_response(response, wechatpay_public_key_pem)
         if response.status_code >= 400:
-            raise WeChatPayError("wechatpay_rejected", "微信支付下单失败")
+            raise WeChatPayError("wechatpay_rejected", "微信支付请求失败")
+        if not response.content:
+            return {}
         value = response.json()
-        prepay_id = value.get("prepay_id") if isinstance(value, dict) else None
+        return value if isinstance(value, dict) else {}
+
+    async def create_jsapi_order(
+        self,
+        *,
+        app_id: str,
+        merchant_id: str,
+        merchant_serial_no: str,
+        merchant_private_key_pem: str,
+        wechatpay_public_key_pem: str,
+        order_no: str,
+        description: str,
+        amount: int,
+        openid: str,
+        notify_url: str,
+        sub_mchid: str | None = None,
+        sp_mchid: str | None = None,
+    ) -> MiniProgramPayment:
+        path = "/v3/pay/transactions/jsapi"
+        if sub_mchid:
+            payload: dict[str, Any] = {
+                "sp_appid": app_id,
+                "sp_mchid": sp_mchid or merchant_id,
+                "sub_mchid": sub_mchid,
+                "description": description[:127],
+                "out_trade_no": order_no,
+                "notify_url": notify_url,
+                "amount": {"total": amount, "currency": "CNY"},
+                "payer": {"sp_openid": openid},
+            }
+        else:
+            payload = {
+                "appid": app_id,
+                "mchid": merchant_id,
+                "description": description[:127],
+                "out_trade_no": order_no,
+                "notify_url": notify_url,
+                "amount": {"total": amount, "currency": "CNY"},
+                "payer": {"openid": openid},
+            }
+        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        value = await self._call(
+            "POST",
+            path,
+            body=body,
+            merchant_id=merchant_id,
+            merchant_serial_no=merchant_serial_no,
+            merchant_private_key_pem=merchant_private_key_pem,
+            wechatpay_public_key_pem=wechatpay_public_key_pem,
+        )
+        prepay_id = value.get("prepay_id")
         if not isinstance(prepay_id, str) or not prepay_id:
             raise WeChatPayError("wechatpay_response_invalid", "微信支付未返回 prepay_id")
         timestamp = str(int(time.time()))
@@ -215,9 +263,134 @@ class WeChatPayClient:
             },
         )
 
+    async def query_order(
+        self,
+        *,
+        order_no: str,
+        merchant_id: str,
+        merchant_serial_no: str,
+        merchant_private_key_pem: str,
+        wechatpay_public_key_pem: str,
+        sub_mchid: str | None = None,
+        sp_mchid: str | None = None,
+    ) -> dict[str, Any]:
+        if sub_mchid:
+            path = (
+                f"/v3/pay/transactions/out-trade-no/{order_no}"
+                f"?sp_mchid={sp_mchid or merchant_id}&sub_mchid={sub_mchid}"
+            )
+        else:
+            path = f"/v3/pay/transactions/out-trade-no/{order_no}?mchid={merchant_id}"
+        return await self._call(
+            "GET",
+            path,
+            body="",
+            merchant_id=merchant_id,
+            merchant_serial_no=merchant_serial_no,
+            merchant_private_key_pem=merchant_private_key_pem,
+            wechatpay_public_key_pem=wechatpay_public_key_pem,
+        )
+
+    async def close_order(
+        self,
+        *,
+        order_no: str,
+        merchant_id: str,
+        merchant_serial_no: str,
+        merchant_private_key_pem: str,
+        wechatpay_public_key_pem: str,
+        sub_mchid: str | None = None,
+        sp_mchid: str | None = None,
+    ) -> None:
+        path = f"/v3/pay/transactions/out-trade-no/{order_no}/close"
+        if sub_mchid:
+            payload: dict[str, Any] = {"sp_mchid": sp_mchid or merchant_id, "sub_mchid": sub_mchid}
+        else:
+            payload = {"mchid": merchant_id}
+        await self._call(
+            "POST",
+            path,
+            body=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            merchant_id=merchant_id,
+            merchant_serial_no=merchant_serial_no,
+            merchant_private_key_pem=merchant_private_key_pem,
+            wechatpay_public_key_pem=wechatpay_public_key_pem,
+        )
+
+    async def create_refund(
+        self,
+        *,
+        out_refund_no: str,
+        transaction_id: str,
+        total: int,
+        refund: int,
+        reason: str | None,
+        merchant_id: str,
+        merchant_serial_no: str,
+        merchant_private_key_pem: str,
+        wechatpay_public_key_pem: str,
+        sub_mchid: str | None = None,
+    ) -> RefundResult:
+        payload: dict[str, Any] = {
+            "transaction_id": transaction_id,
+            "out_refund_no": out_refund_no,
+            "amount": {"refund": refund, "total": total, "currency": "CNY"},
+        }
+        if reason:
+            payload["reason"] = reason[:80]
+        if sub_mchid:
+            payload["sub_mchid"] = sub_mchid
+        value = await self._call(
+            "POST",
+            "/v3/refund/domestic/refunds",
+            body=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            merchant_id=merchant_id,
+            merchant_serial_no=merchant_serial_no,
+            merchant_private_key_pem=merchant_private_key_pem,
+            wechatpay_public_key_pem=wechatpay_public_key_pem,
+        )
+        refund_id = value.get("refund_id")
+        status = value.get("status")
+        return RefundResult(
+            refund_id=refund_id if isinstance(refund_id, str) else "",
+            status=status if isinstance(status, str) else "",
+            raw=value,
+        )
+
+    async def query_refund(
+        self,
+        *,
+        out_refund_no: str,
+        merchant_id: str,
+        merchant_serial_no: str,
+        merchant_private_key_pem: str,
+        wechatpay_public_key_pem: str,
+        sub_mchid: str | None = None,
+    ) -> RefundResult:
+        path = f"/v3/refund/domestic/refunds/{out_refund_no}"
+        if sub_mchid:
+            path += f"?sub_mchid={sub_mchid}"
+        value = await self._call(
+            "GET",
+            path,
+            body="",
+            merchant_id=merchant_id,
+            merchant_serial_no=merchant_serial_no,
+            merchant_private_key_pem=merchant_private_key_pem,
+            wechatpay_public_key_pem=wechatpay_public_key_pem,
+        )
+        refund_id = value.get("refund_id")
+        status = value.get("status")
+        return RefundResult(
+            refund_id=refund_id if isinstance(refund_id, str) else "",
+            status=status if isinstance(status, str) else "",
+            raw=value,
+        )
+
 
 __all__ = [
     "MiniProgramPayment",
+    "RefundResult",
     "WeChatPayClient",
     "WeChatPayError",
     "authorization_header",

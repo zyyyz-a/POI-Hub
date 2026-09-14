@@ -114,7 +114,7 @@ async def _platform_program(client: AsyncClient, csrf: str, connection_id: str) 
         json={
             "name": "POI Hub 平台小程序",
             "owner_subject": "平台主体",
-            "app_id": "wx-platform-001",
+            "app_id": "wx-direct-test",
             "connection_id": connection_id,
             "callback_configured": True,
         },
@@ -264,3 +264,51 @@ async def test_entry_is_blocked_until_binding_activated(client: AsyncClient) -> 
     await _activate_binding(client, csrf, tenant_id, created.json(), "store-draft")
     ready = await client.get("/api/v1/public/platform/stores/store-draft")
     assert ready.json()["tradable"] is True, ready.text
+
+
+@pytest.mark.asyncio
+async def test_payment_route_rejects_mismatched_merchant(client: AsyncClient) -> None:
+    csrf, tenant_id = await login(client)
+    headers = {"X-CSRF-Token": csrf, "X-Tenant-ID": tenant_id}
+    store = await _tenant_store_with_product(
+        client, csrf, tenant_id, product_name="支付校验套餐", product_code="PAY-001"
+    )
+    program_id = await _platform_program(client, csrf, store["connection_id"])
+    binding = await _create_binding(
+        client, csrf, tenant_id, program_id, store["store_id"], "store-pay"
+    )
+    await _activate_binding(client, csrf, tenant_id, binding, "store-pay")
+    await _active_payment_profile(
+        client, csrf, tenant_id, store["store_id"], store["connection_id"]
+    )
+    profiles = await client.get("/api/v1/direct-commerce/payment-profiles", headers=headers)
+    assert profiles.status_code == 200, profiles.text
+    profile = profiles.json()[0]
+    mismatched = await client.patch(
+        f"/api/v1/direct-commerce/payment-profiles/{profile['id']}",
+        headers=headers,
+        json={"version": profile["version"], "mchid": "9999999999"},
+    )
+    assert mismatched.status_code == 200, mismatched.text
+
+    login_response = await client.post(
+        "/api/v1/public/platform/stores/store-pay/login", json={"code": "code-pay"}
+    )
+    consumer_headers = {"Authorization": "Bearer " + login_response.json()["access_token"]}
+    order = await client.post(
+        "/api/v1/public/platform/stores/store-pay/orders",
+        headers=consumer_headers,
+        json={
+            "product_id": store["product_id"],
+            "quantity": 1,
+            "idempotency_key": "platform-payorder-01",
+        },
+    )
+    assert order.status_code == 201, order.text
+    paid = await client.post(
+        f"/api/v1/public/platform/stores/store-pay/orders/{order.json()['id']}/pay",
+        headers=consumer_headers,
+        json={},
+    )
+    assert paid.status_code == 409
+    assert paid.json()["detail"]["code"] == "payment_profile_mismatch"
