@@ -133,6 +133,14 @@
   .profile-item .arrow { color: #9CA3AF; }
   .checkbox-row { display: flex; align-items: center; gap: 7px; margin-top: 10px; font-size: 12px; color: var(--sub); }
   .checkbox { width: 15px; height: 15px; border-radius: 4px; background: var(--primary); color: #fff; font-size: 11px; display: flex; align-items: center; justify-content: center; }
+
+  .p-cover { height: 120px; border-radius: 14px 14px 0 0; background: linear-gradient(135deg, #C7DBFF, #E0E7FF); display: flex; align-items: center; justify-content: center; color: #4F46E5; font-size: 30px; }
+  .p-head { display: flex; align-items: center; margin-top: -26px; padding: 0 4px; }
+  .p-logo { width: 52px; height: 52px; border-radius: 12px; background: #fff; border: 2px solid #fff; box-shadow: 0 2px 8px rgba(15,23,42,.12); display: flex; align-items: center; justify-content: center; font-size: 22px; margin-right: 12px; }
+  .p-name { font-size: 19px; font-weight: 700; }
+  .p-notice { background: #FFF8EC; color: #B45309; border-radius: 12px; padding: 10px 14px; font-size: 13px; margin-bottom: 12px; }
+  .p-env { display: flex; gap: 6px; }
+  .p-env > div { flex: 1; height: 66px; border-radius: 10px; background: linear-gradient(135deg, #E2E8F0, #F1F5F9); }
 </style>
 </head>
 <body>
@@ -150,22 +158,24 @@
       <div class="statusbar"><span>9:41</span><span class="dots">●●●</span></div>
       <div class="navbar">门店</div>
       <div class="content">
-        <div class="hero">
-          <div class="title">缔丝风尚潮色染烫</div>
-          <div class="muted" style="margin-top:6px">河南省漯河市源汇区乐山路长江国际小区116门面房</div>
-          <div class="op-row"><span class="op">导航</span><span class="op">电话</span></div>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="p-cover">✂</div>
+          <div style="padding:0 14px 14px">
+            <div class="p-head"><div class="p-logo">缔</div><div><div class="p-name">缔丝风尚潮色染烫</div><div class="muted">正常营业 · 09:00-21:00</div></div></div>
+            <div class="muted" style="margin-top:8px">河南省漯河市源汇区乐山路长江国际小区116门面房</div>
+            <div class="op-row"><span class="op">导航</span><span class="op">电话</span></div>
+            <div class="muted" style="margin-top:8px">专注潮色染烫，十三年门店服务经验。</div>
+          </div>
         </div>
-        <div class="section-title">本店套餐</div>
+
+        <div class="section-title">热门套餐</div>
         <div class="card">
           <div class="row">
             <div class="thumb">✂</div>
             <div class="grow">
-              <div class="subtitle">潮色染发体验</div>
+              <div class="subtitle">潮色染发套餐</div>
               <div class="muted">到店使用 · 需提前预约</div>
-              <div class="row-between" style="margin-top:8px">
-                <div class="price"><span class="sym">¥</span>99</div>
-                <div class="muted">已售 12</div>
-              </div>
+              <div class="row-between" style="margin-top:8px"><div class="price"><span class="sym">¥</span>99</div><div class="muted">已售 12</div></div>
               <div class="muted">剩余 10 份</div>
             </div>
           </div>
@@ -174,16 +184,51 @@
           <div class="row">
             <div class="thumb">💇</div>
             <div class="grow">
-              <div class="subtitle">洗剪吹造型</div>
+              <div class="subtitle">洗剪吹套餐</div>
               <div class="muted">到店即用</div>
-              <div class="row-between" style="margin-top:8px">
-                <div class="price"><span class="sym">¥</span>59</div>
-                <div class="muted">已售 30</div>
-              </div>
+              <div class="row-between" style="margin-top:8px"><div class="price"><span class="sym">¥</span>59</div><div class="muted">已售 30</div></div>
             </div>
           </div>
         </div>
-        <div class="card muted">服务保障：真实门店 · 到店核销 · 未使用可申请退款</div>
+
+        <div class="section-title">门店环境</div>
+        <div class="card"><div class="p-env"><div></div><div></div><div></div></div></div>
+
+        <div class="card"><div class="section-title">服务保障</div><div class="muted">真实门店 · 到店核销 · 未使用可申请退款</div></div>
+        <div class="card"><div class="section-title">预约与退款说明</div><div class="muted">需提前 2 小时预约；未核销且未过期的订单可申请退款。</div></div>
+      </div>
+      <div class="tabbar"><div class="tab active"><i>🏠</i>首页</div><div class="tab"><i>🧾</i>订单</div><div class="tab"><i>👤</i>我的</div></div>
+    </div></div>
+  </div>
+
+  <!-- 门店首页（支付未开通演示态） -->
+  <div class="phone-wrap">
+    <div class="phone-label">1b. 门店首页（支付未开通也能演示）</div>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span>9:41</span><span class="dots">●●●</span></div>
+      <div class="navbar">门店</div>
+      <div class="content">
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="p-cover">✂</div>
+          <div style="padding:0 14px 14px">
+            <div class="p-head"><div class="p-logo">缔</div><div><div class="p-name">缔丝风尚潮色染烫</div><div class="muted">正常营业 · 09:00-21:00</div></div></div>
+            <div class="muted" style="margin-top:8px">河南省漯河市源汇区乐山路长江国际小区116门面房</div>
+            <div class="op-row"><span class="op">导航</span><span class="op">电话</span></div>
+          </div>
+        </div>
+        <div class="p-notice">门店服务准备中，当前暂不可购买，可先查看门店与服务项目。</div>
+        <div class="section-title">热门套餐</div>
+        <div class="card">
+          <div class="row">
+            <div class="thumb">✂</div>
+            <div class="grow">
+              <div class="row-between"><div class="subtitle">潮色染发套餐</div><span class="tag tag-muted">准备中</span></div>
+              <div class="row-between" style="margin-top:8px"><div class="price"><span class="sym">¥</span>99</div><div class="muted">已售 12</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="card"><div class="section-title">门店环境</div><div class="p-env"><div></div><div></div><div></div></div></div>
+        <div class="card"><div class="section-title">服务保障</div><div class="muted">真实门店 · 到店核销 · 未使用可申请退款</div></div>
       </div>
       <div class="tabbar"><div class="tab active"><i>🏠</i>首页</div><div class="tab"><i>🧾</i>订单</div><div class="tab"><i>👤</i>我的</div></div>
     </div></div>

@@ -1,50 +1,80 @@
 <view class="page">
   <page-state
-    wx:if="{{state !== 'content' && state !== 'blocked'}}"
+    wx:if="{{state !== 'content'}}"
     state="{{state}}"
     message="{{message}}"
     bind:action="load"
   />
 
   <block wx:if="{{store}}">
-    <view class="hero">
-      <view class="title">{{store.store_name}}</view>
-      <view class="muted" style="margin-top:8rpx">{{store.address}}</view>
+    <view class="store-hero">
+      <image wx:if="{{store.cover_image}}" class="store-cover" src="{{store.cover_image}}" mode="aspectFill" />
+      <view class="store-head">
+        <image wx:if="{{store.logo}}" class="store-logo" src="{{store.logo}}" mode="aspectFill" />
+        <view class="grow">
+          <view class="store-name">{{store.store_name}}</view>
+          <view class="muted">
+            {{store.store_status === 'active' ? '正常营业' : '暂停营业'}}{{store.business_hours ? ' · ' + store.business_hours : ''}}
+          </view>
+        </view>
+      </view>
+      <view class="muted" style="margin-top:10rpx">{{store.address}}</view>
       <view class="op-row">
         <view class="op" bindtap="openLocation">导航</view>
         <view class="op" bindtap="callStore">电话</view>
       </view>
+      <view wx:if="{{store.intro}}" class="muted" style="margin-top:12rpx">{{store.intro}}</view>
     </view>
 
-    <view wx:if="{{blocked}}" class="card">
-      <view class="section-title">暂不能营业</view>
-      <view class="muted">{{blocked}}</view>
-      <view class="muted" style="margin-top:8rpx">请稍后再试，或联系客服。</view>
-    </view>
+    <view wx:if="{{notice}}" class="notice-bar">{{notice}}</view>
 
-    <block wx:if="{{state === 'content'}}">
-      <view class="section-title">本店套餐</view>
-      <view
-        wx:for="{{products}}"
-        wx:key="id"
-        class="card"
-        bindtap="openProduct"
-        data-id="{{item.id}}"
-      >
-        <view class="row">
-          <image wx:if="{{item.cover_image}}" class="thumb" src="{{item.cover_image}}" mode="aspectFill" />
-          <view class="grow">
-            <view class="subtitle">{{item.name}}</view>
-            <view class="muted ellipsis">{{item.description}}</view>
-            <view class="row-between" style="margin-top:12rpx">
-              <view class="price"><text class="price-symbol">¥</text>{{item.sale_price / 100}}</view>
-              <view class="muted">已售 {{item.sold_count}}</view>
-            </view>
-            <view class="muted">{{item.stock_text}}</view>
+    <view class="section-title">热门套餐</view>
+    <view
+      wx:for="{{products}}"
+      wx:key="id"
+      class="card product-card"
+      bindtap="openProduct"
+      data-id="{{item.id}}"
+    >
+      <view class="row">
+        <image wx:if="{{item.cover_image}}" class="thumb" src="{{item.cover_image}}" mode="aspectFill" />
+        <view wx:else class="thumb thumb-placeholder">套餐</view>
+        <view class="grow">
+          <view class="subtitle">{{item.name}}</view>
+          <view class="muted ellipsis">{{item.description}}</view>
+          <view class="row-between" style="margin-top:12rpx">
+            <view class="price"><text class="price-symbol">¥</text>{{item.sale_price / 100}}</view>
+            <view class="tag {{purchasable ? 'tag-success' : 'tag-muted'}}">{{purchasable ? '可购买' : '准备中'}}</view>
           </view>
+          <view class="muted">{{item.stock_text}} · 已售 {{item.sold_count}}</view>
         </view>
       </view>
-      <view class="card muted">服务保障：真实门店 · 到店核销 · 未使用可申请退款</view>
+    </view>
+    <view wx:if="{{!products.length}}" class="card muted">门店正在准备套餐，敬请期待。</view>
+
+    <block wx:if="{{store.environment_images.length}}">
+      <view class="section-title">门店环境</view>
+      <view class="env-grid">
+        <image
+          wx:for="{{store.environment_images}}"
+          wx:key="*this"
+          class="env-img"
+          src="{{item}}"
+          mode="aspectFill"
+          bindtap="previewImage"
+          data-url="{{item}}"
+        />
+      </view>
     </block>
+
+    <view class="card">
+      <view class="section-title">服务保障</view>
+      <view class="muted">{{store.service_guarantees || '真实门店 · 到店核销 · 未使用可申请退款'}}</view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">预约与退款说明</view>
+      <view class="muted">{{store.appointment_notes || '如需预约请进入套餐详情，未核销且未过期的订单可申请退款。'}}</view>
+    </view>
   </block>
 </view>

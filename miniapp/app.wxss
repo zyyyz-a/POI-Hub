@@ -370,4 +370,71 @@ page {
   font-size: 34rpx;
 }
 
+.store-hero {
+  background: #FFFFFF;
+  border-radius: 20rpx;
+  padding: 0 24rpx 24rpx;
+  margin-bottom: 20rpx;
+  overflow: hidden;
+}
+
+.store-cover {
+  width: calc(100% + 48rpx);
+  margin: 0 -24rpx 20rpx;
+  height: 320rpx;
+  background: #EEF2F7;
+  display: block;
+}
+
+.store-head {
+  display: flex;
+  align-items: center;
+}
+
+.store-logo {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 20rpx;
+  margin-right: 20rpx;
+  flex-shrink: 0;
+  background: #EEF2F7;
+}
+
+.store-name {
+  font-size: 38rpx;
+  font-weight: 700;
+}
+
+.notice-bar {
+  background: #FFF8EC;
+  color: #B45309;
+  border-radius: 16rpx;
+  padding: 18rpx 24rpx;
+  font-size: 26rpx;
+  margin-bottom: 20rpx;
+}
+
+.env-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-bottom: 20rpx;
+}
+
+.env-img {
+  width: calc((100% - 24rpx) / 3);
+  height: 210rpx;
+  border-radius: 16rpx;
+  background: #EEF2F7;
+}
+
+.product-card .thumb-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9CA3AF;
+  font-size: 24rpx;
+}
+
+
 

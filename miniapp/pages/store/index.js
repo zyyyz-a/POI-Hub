@@ -8,7 +8,8 @@ Page({
     message: '',
     store: null,
     products: [],
-    blocked: '',
+    purchasable: false,
+    notice: '',
     storeCode: ''
   },
   onLoad(options) {
@@ -32,14 +33,20 @@ Page({
     try {
       const store = await api.store(storeCode)
       getApp().globalData.store = store
-      if (!store.tradable) {
-        const blocked = (store.blockers || []).join('、')
-        this.setData({ state: 'blocked', store, blocked, message: blocked })
-        return
+      let products = []
+      try {
+        products = (await api.products(storeCode)).map(util.decorateProduct)
+      } catch (error) {
+        products = []
       }
-      const products = (await api.products(storeCode)).map(util.decorateProduct)
       getApp().globalData.products = products
-      this.setData({ state: products.length ? 'content' : 'empty', store, products })
+      this.setData({
+        state: 'content',
+        store,
+        products,
+        purchasable: store.purchasable !== false && store.tradable !== false,
+        notice: store.notice || ''
+      })
     } catch (error) {
       if (error.status === 404) {
         wx.redirectTo({ url: '/pages/entry-error/index?reason=invalid' })
@@ -66,10 +73,16 @@ Page({
   },
   callStore() {
     const store = this.data.store
-    if (!store || !store.contact_phone_masked || store.contact_phone_masked.includes('*')) {
-      wx.showToast({ title: '电话未公开，请咨询客服', icon: 'none' })
+    const phone = store && (store.public_phone || '')
+    if (!phone || phone.includes('*')) {
+      wx.showToast({ title: '电话暂未公开，请咨询客服', icon: 'none' })
       return
     }
-    wx.makePhoneCall({ phoneNumber: store.contact_phone_masked })
+    wx.makePhoneCall({ phoneNumber: phone })
+  },
+  previewImage(event) {
+    const urls = this.data.store.environment_images || []
+    if (!urls.length) return
+    wx.previewImage({ current: event.currentTarget.dataset.url, urls })
   }
 })

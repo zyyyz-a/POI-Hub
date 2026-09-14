@@ -18,6 +18,8 @@
       </view>
     </view>
 
+    <view wx:if="{{notice}}" class="notice-bar">{{notice}}</view>
+
     <view class="card">
       <view class="section-title">套餐内容</view>
       <view class="muted">{{product.description || '以门店实际服务为准。'}}</view>
@@ -42,5 +44,5 @@
 
 <view wx:if="{{product}}" class="bottom-bar">
   <view class="price"><text class="price-symbol">¥</text>{{product.sale_price / 100}}</view>
-  <view class="btn btn-primary {{product.stock <= 0 ? 'disabled' : ''}}" bindtap="buy">{{product.stock <= 0 ? '已售罄' : '立即购买'}}</view>
+  <view class="btn btn-primary {{(!purchasable || product.stock <= 0) ? 'disabled' : ''}}" bindtap="buy">{{!purchasable ? '暂不可购买' : (product.stock <= 0 ? '已售罄' : '立即购买')}}</view>
 </view>
