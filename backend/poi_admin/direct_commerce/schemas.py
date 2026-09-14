@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -250,6 +250,49 @@ class RefundResponse(BaseModel):
     updated_at: datetime
 
 
+class ReconciliationImport(BaseModel):
+    bill_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    csv: str | None = Field(default=None, max_length=5_000_000)
+    rows: list[dict[str, Any]] | None = Field(default=None, max_length=100_000)
+
+
+class ReconciliationBatchResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    tenant_id: str
+    provider: str
+    bill_date: str
+    source: str
+    statement_total: int
+    platform_total: int
+    matched_count: int
+    difference_count: int
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReconciliationItemResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    batch_id: str
+    order_no: str | None
+    transaction_id: str | None
+    statement_amount: int | None
+    platform_amount: int | None
+    status: str
+    note: str | None
+    resolved: bool
+    resolved_note: str | None
+    created_at: datetime
+
+
+class ReconciliationResolve(BaseModel):
+    note: str = Field(min_length=1, max_length=500)
+
+
 __all__ = [
     "AppointmentCreate",
     "AppointmentResponse",
@@ -265,6 +308,10 @@ __all__ = [
     "PaymentProfileUpdate",
     "PaymentRequest",
     "PaymentResponse",
+    "ReconciliationBatchResponse",
+    "ReconciliationImport",
+    "ReconciliationItemResponse",
+    "ReconciliationResolve",
     "RefundCreate",
     "RefundRequest",
     "RefundResponse",

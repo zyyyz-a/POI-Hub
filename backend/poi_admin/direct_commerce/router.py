@@ -15,6 +15,12 @@ from poi_admin.core.dependencies import AuthContext, auth_error, require_csrf, r
 from poi_admin.core.permissions import Permission
 
 from .platform_service import PlatformCommerceService
+from .reconciliation import (
+    DirectReconciliationError,
+    DirectReconciliationService,
+    normalize_rows,
+    parse_trade_bill_csv,
+)
 from .schemas import (
     AppointmentCreate,
     AppointmentResponse,
@@ -30,6 +36,10 @@ from .schemas import (
     PaymentProfileUpdate,
     PaymentRequest,
     PaymentResponse,
+    ReconciliationBatchResponse,
+    ReconciliationImport,
+    ReconciliationItemResponse,
+    ReconciliationResolve,
     RefundCreate,
     RefundRequest,
     RefundResponse,
@@ -69,6 +79,10 @@ def _platform_service(request: Request, session: AsyncSession) -> PlatformCommer
 
 
 def _raise(error: DirectCommerceError) -> None:
+    raise auth_error(error.code, error.message, error.status_code)
+
+
+def _raise_recon(error: DirectReconciliationError) -> None:
     raise auth_error(error.code, error.message, error.status_code)
 
 
@@ -428,6 +442,93 @@ async def query_direct_order(
     except DirectCommerceError as error:
         _raise(error)
     return DirectOrderResponse.model_validate(row)
+
+
+@direct_commerce_router.post(
+    "/reconciliation/import",
+    response_model=ReconciliationBatchResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def import_reconciliation(
+    payload: ReconciliationImport,
+    request: Request,
+    context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_ORDERS))],
+    csrf_context: Annotated[AuthContext, Depends(require_csrf)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ReconciliationBatchResponse:
+    del request, csrf_context
+    if payload.csv:
+        rows = parse_trade_bill_csv(payload.csv)
+    elif payload.rows:
+        rows = normalize_rows(payload.rows)
+    else:
+        raise auth_error("reconciliation_rows_required", "请提供账单 CSV 或结构化行", 422)
+    try:
+        batch = await DirectReconciliationService(session).import_statement(
+            _tenant_id(context), payload.bill_date, rows, context.user.id
+        )
+    except DirectReconciliationError as error:
+        _raise_recon(error)
+    return ReconciliationBatchResponse.model_validate(batch)
+
+
+@direct_commerce_router.get(
+    "/reconciliation/batches", response_model=list[ReconciliationBatchResponse]
+)
+async def list_reconciliation_batches(
+    context: Annotated[AuthContext, Depends(require_permission(Permission.VIEW_ACCOUNTING))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[ReconciliationBatchResponse]:
+    rows = await DirectReconciliationService(session).list_batches(_tenant_id(context))
+    return [ReconciliationBatchResponse.model_validate(item) for item in rows]
+
+
+@direct_commerce_router.get(
+    "/reconciliation/batches/{batch_id}/items",
+    response_model=list[ReconciliationItemResponse],
+)
+async def list_reconciliation_items(
+    batch_id: str,
+    context: Annotated[AuthContext, Depends(require_permission(Permission.VIEW_ACCOUNTING))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[ReconciliationItemResponse]:
+    try:
+        rows = await DirectReconciliationService(session).list_items(_tenant_id(context), batch_id)
+    except DirectReconciliationError as error:
+        _raise_recon(error)
+    return [ReconciliationItemResponse.model_validate(item) for item in rows]
+
+
+@direct_commerce_router.post(
+    "/reconciliation/items/{item_id}/resolve",
+    response_model=ReconciliationItemResponse,
+)
+async def resolve_reconciliation_item(
+    item_id: str,
+    payload: ReconciliationResolve,
+    request: Request,
+    context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_ORDERS))],
+    csrf_context: Annotated[AuthContext, Depends(require_csrf)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ReconciliationItemResponse:
+    del csrf_context
+    try:
+        row = await DirectReconciliationService(session).resolve_item(
+            _tenant_id(context), item_id, payload.note
+        )
+    except DirectReconciliationError as error:
+        _raise_recon(error)
+    response = ReconciliationItemResponse.model_validate(row)
+    await _audit(
+        session,
+        request,
+        context,
+        "direct_reconciliation.resolved",
+        "direct_reconciliation_item",
+        row.id,
+        {"status": row.status, "note": payload.note},
+    )
+    return response
 
 
 @consumer_router.post("/{mini_program_id}/login", response_model=ConsumerSessionResponse)

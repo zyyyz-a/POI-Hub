@@ -353,12 +353,73 @@ class DirectRefund(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
+class DirectReconciliationBatch(Base):
+    __tablename__ = "direct_reconciliation_batches"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "provider", "bill_date", name="uq_direct_recon_batch"
+        ),
+        Index("ix_direct_recon_batch_tenant_status", "tenant_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    provider: Mapped[str] = mapped_column(String(30), nullable=False, default="wechatpay")
+    bill_date: Mapped[str] = mapped_column(String(10), nullable=False)
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="import")
+    statement_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    platform_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    matched_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    difference_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="completed")
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
+class DirectReconciliationItem(Base):
+    __tablename__ = "direct_reconciliation_items"
+    __table_args__ = (Index("ix_direct_recon_item_batch", "batch_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    batch_id: Mapped[str] = mapped_column(
+        ForeignKey("direct_reconciliation_batches.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    tenant_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    order_no: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    transaction_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    statement_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    platform_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    resolved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    resolved_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+
 __all__ = [
     "ConsumerIdentity",
     "ConsumerSession",
     "DirectAppointment",
     "DirectOrder",
     "DirectProduct",
+    "DirectReconciliationBatch",
+    "DirectReconciliationItem",
     "DirectRefund",
     "DirectVoucher",
     "MerchantPaymentProfile",
