@@ -77,7 +77,7 @@ def test_fresh_database_can_run_real_alembic_upgrade_and_is_idempotent(tmp_path:
             revision = connection.execute(
                 text("select version_num from alembic_version")
             ).scalar_one()
-            assert revision == "0014_platform_order_consumer"
+            assert revision == "0015_single_quantity_orders"
         assert any(
             index["name"] == "ix_operation_claimable"
             for index in inspector.get_indexes("integration_operations")

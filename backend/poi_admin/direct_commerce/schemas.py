@@ -69,8 +69,15 @@ class ConsumerSessionResponse(BaseModel):
 
 class DirectOrderCreate(BaseModel):
     product_id: str
-    quantity: int = Field(default=1, ge=1, le=20)
+    quantity: int = 1
     idempotency_key: str = Field(min_length=8, max_length=128)
+
+    @field_validator("quantity")
+    @classmethod
+    def single_use_only(cls, value: int) -> int:
+        if value != 1:
+            raise ValueError("每单限购 1 份，请分单购买")
+        return value
 
 
 class DirectOrderResponse(BaseModel):

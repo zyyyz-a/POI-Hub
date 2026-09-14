@@ -189,7 +189,7 @@ class DirectOrder(Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "order_no", name="uq_direct_order_no"),
         UniqueConstraint("tenant_id", "idempotency_key", name="uq_direct_order_idempotency"),
-        CheckConstraint("quantity > 0", name="ck_direct_order_quantity"),
+        CheckConstraint("quantity = 1", name="ck_direct_order_quantity"),
         CheckConstraint("total_amount > 0", name="ck_direct_order_amount"),
         Index("ix_direct_order_tenant_status", "tenant_id", "status"),
     )

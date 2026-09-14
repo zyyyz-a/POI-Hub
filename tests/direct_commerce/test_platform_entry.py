@@ -180,6 +180,17 @@ async def test_one_platform_appid_isolates_two_tenant_stores(client: AsyncClient
     assert login_a.status_code == 200, login_a.text
     consumer_headers = {"Authorization": "Bearer " + login_a.json()["access_token"]}
 
+    too_many = await client.post(
+        "/api/v1/public/platform/stores/store-a/orders",
+        headers=consumer_headers,
+        json={
+            "product_id": store_a["product_id"],
+            "quantity": 2,
+            "idempotency_key": "platform-order-toomany",
+        },
+    )
+    assert too_many.status_code == 422
+
     order = await client.post(
         "/api/v1/public/platform/stores/store-a/orders",
         headers=consumer_headers,
