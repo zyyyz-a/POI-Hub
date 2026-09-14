@@ -30,6 +30,8 @@ from .schemas import (
     PaymentProfileUpdate,
     PaymentRequest,
     PaymentResponse,
+    RefundCreate,
+    RefundResponse,
     StoreEntryResponse,
     VoucherConsumeRequest,
     VoucherResponse,
@@ -331,6 +333,72 @@ async def update_payment_profile(
         response.model_dump(mode="json"),
     )
     return response
+
+
+@direct_commerce_router.get("/refunds", response_model=list[RefundResponse])
+async def list_refunds(
+    request: Request,
+    context: Annotated[AuthContext, Depends(require_permission(Permission.VIEW_ORDERS))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[RefundResponse]:
+    rows = await _service(request, session).list_refunds(_tenant_id(context))
+    return [RefundResponse.model_validate(item) for item in rows]
+
+
+@direct_commerce_router.post(
+    "/orders/{order_id}/refunds",
+    response_model=RefundResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_refund(
+    order_id: str,
+    payload: RefundCreate,
+    request: Request,
+    context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_ORDERS))],
+    csrf_context: Annotated[AuthContext, Depends(require_csrf)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> RefundResponse:
+    del csrf_context
+    try:
+        row = await _service(request, session).request_refund(
+            _tenant_id(context),
+            order_id,
+            payload.amount,
+            payload.reason,
+            payload.idempotency_key,
+            context.user.id,
+        )
+    except DirectCommerceError as error:
+        _raise(error)
+    response = RefundResponse.model_validate(row)
+    await _audit(
+        session,
+        request,
+        context,
+        "direct_refund.created",
+        "direct_refund",
+        row.id,
+        response.model_dump(mode="json"),
+    )
+    return response
+
+
+@direct_commerce_router.post(
+    "/orders/{order_id}/query", response_model=DirectOrderResponse
+)
+async def query_direct_order(
+    order_id: str,
+    request: Request,
+    context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_ORDERS))],
+    csrf_context: Annotated[AuthContext, Depends(require_csrf)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DirectOrderResponse:
+    del csrf_context
+    try:
+        row = await _service(request, session).query_order(_tenant_id(context), order_id)
+    except DirectCommerceError as error:
+        _raise(error)
+    return DirectOrderResponse.model_validate(row)
 
 
 @consumer_router.post("/{mini_program_id}/login", response_model=ConsumerSessionResponse)

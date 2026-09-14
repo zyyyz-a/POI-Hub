@@ -26,6 +26,7 @@ from .models import (
     DirectAppointment,
     DirectOrder,
     DirectProduct,
+    DirectRefund,
     DirectVoucher,
     MerchantPaymentProfile,
     utcnow,
@@ -624,6 +625,233 @@ class DirectCommerceService:
         if connection.capability != Capability.MINI_PROGRAM_COMMERCE.value:
             raise DirectCommerceError("invalid_connection_capability", "必须选择独立小程序交易连接")
         return connection
+
+    async def list_refunds(self, tenant_id: str) -> list[DirectRefund]:
+        rows = await self.session.execute(
+            select(DirectRefund)
+            .where(DirectRefund.tenant_id == tenant_id)
+            .order_by(DirectRefund.created_at.desc())
+        )
+        return list(rows.scalars().all())
+
+    async def get_order(self, tenant_id: str, order_id: str) -> DirectOrder:
+        row = await self.session.scalar(
+            select(DirectOrder).where(
+                DirectOrder.tenant_id == tenant_id, DirectOrder.id == order_id
+            )
+        )
+        if row is None:
+            raise DirectCommerceError("order_not_found", "订单不存在", 404)
+        return row
+
+    async def request_refund(
+        self,
+        tenant_id: str,
+        order_id: str,
+        amount: int,
+        reason: str | None,
+        idempotency_key: str,
+        actor_user_id: str | None,
+    ) -> DirectRefund:
+        order = await self.get_order(tenant_id, order_id)
+        if order.status not in {"paid", "partially_refunded"}:
+            raise DirectCommerceError("order_not_refundable", "订单当前不能退款", 409)
+        remaining = order.total_amount - order.refunded_amount
+        if amount <= 0 or amount > remaining:
+            raise DirectCommerceError("invalid_refund_amount", "退款金额超出可退范围", 422)
+        existing = await self.session.scalar(
+            select(DirectRefund).where(
+                DirectRefund.tenant_id == tenant_id,
+                DirectRefund.idempotency_key == idempotency_key,
+            )
+        )
+        if existing is not None:
+            if existing.order_id != order_id or existing.amount != amount:
+                raise DirectCommerceError(
+                    "idempotency_conflict", "幂等键已用于其他退款", 409
+                )
+            return existing
+        refund = DirectRefund(
+            tenant_id=tenant_id,
+            order_id=order.id,
+            store_id=order.store_id,
+            payment_profile_id=order.payment_profile_id,
+            refund_no="RF" + secrets.token_hex(8).upper(),
+            idempotency_key=idempotency_key,
+            amount=amount,
+            reason=reason,
+            status="pending",
+            transaction_id=order.transaction_id,
+            created_by_user_id=actor_user_id,
+        )
+        self.session.add(refund)
+        await self.session.flush()
+        connection = await self._connection_for_order(order)
+        if connection is None or connection.mode == ConnectionMode.MOCK.value:
+            await self._apply_refund(order, refund)
+            refund.status = "success"
+            refund.wechat_refund_id = "MOCKREFUND" + secrets.token_hex(6).upper()
+            refund.version += 1
+            await self.session.commit()
+            await self.session.refresh(refund)
+            return refund
+        bundle = self._secrets(connection)
+        merchant_id = order.mchid_snapshot or connection.merchant_id
+        try:
+            result = await WeChatPayClient(self.http_client).create_refund(
+                out_refund_no=refund.refund_no,
+                transaction_id=order.transaction_id or "",
+                total=order.total_amount,
+                refund=amount,
+                reason=reason,
+                merchant_id=self._required_value(merchant_id, "微信支付商户号"),
+                merchant_serial_no=self._required(bundle, "merchant_serial_no", "商户证书序列号"),
+                merchant_private_key_pem=self._required(
+                    bundle, "merchant_private_key_pem", "微信支付商户私钥"
+                ),
+                wechatpay_public_key_pem=self._required(
+                    bundle, "wechatpay_public_key_pem", "微信支付公钥"
+                ),
+                sub_mchid=order.sub_mchid_snapshot,
+            )
+        except WeChatPayError as error:
+            await self.session.rollback()
+            raise DirectCommerceError(error.code, error.message, error.status_code) from error
+        refund.wechat_refund_id = result.refund_id
+        if result.status == "SUCCESS":
+            await self._apply_refund(order, refund)
+            refund.status = "success"
+        elif result.status == "CLOSED":
+            refund.status = "failed"
+        else:
+            refund.status = "processing"
+        refund.version += 1
+        await self.session.commit()
+        await self.session.refresh(refund)
+        return refund
+
+    async def query_order(self, tenant_id: str, order_id: str) -> DirectOrder:
+        order = await self.get_order(tenant_id, order_id)
+        if order.status != "payment_pending" or not order.prepay_id:
+            return order
+        connection = await self._connection_for_order(order)
+        if connection is None or connection.mode != ConnectionMode.LIVE.value:
+            return order
+        bundle = self._secrets(connection)
+        merchant_id = order.mchid_snapshot or connection.merchant_id
+        try:
+            result = await WeChatPayClient(self.http_client).query_order(
+                order_no=order.order_no,
+                merchant_id=self._required_value(merchant_id, "微信支付商户号"),
+                merchant_serial_no=self._required(bundle, "merchant_serial_no", "商户证书序列号"),
+                merchant_private_key_pem=self._required(
+                    bundle, "merchant_private_key_pem", "微信支付商户私钥"
+                ),
+                wechatpay_public_key_pem=self._required(
+                    bundle, "wechatpay_public_key_pem", "微信支付公钥"
+                ),
+                sub_mchid=order.sub_mchid_snapshot,
+            )
+        except WeChatPayError as error:
+            raise DirectCommerceError(error.code, error.message, error.status_code) from error
+        trade_state = result.get("trade_state")
+        amount = result.get("amount")
+        total = amount.get("total") if isinstance(amount, dict) else None
+        if trade_state == "SUCCESS" and total == order.total_amount:
+            transaction_id = result.get("transaction_id")
+            if isinstance(transaction_id, str) and transaction_id:
+                await self._mark_paid(order, transaction_id=transaction_id)
+        elif trade_state in {"CLOSED", "REVOKED", "PAYERROR"}:
+            order.status = "closed"
+            await self._restore_stock(order)
+        await self.session.commit()
+        await self.session.refresh(order)
+        return order
+
+    async def close_expired_orders(self) -> int:
+        now = utcnow()
+        rows = list(
+            (
+                await self.session.execute(
+                    select(DirectOrder).where(
+                        DirectOrder.status == "payment_pending",
+                        DirectOrder.expires_at <= now,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for order in rows:
+            order.status = "expired"
+            await self._restore_stock(order)
+            await self._try_close_gateway(order)
+        if rows:
+            await self.session.commit()
+        return len(rows)
+
+    async def run_maintenance(self) -> dict[str, int]:
+        return {"closed_orders": await self.close_expired_orders()}
+
+    async def _apply_refund(self, order: DirectOrder, refund: DirectRefund) -> None:
+        order.refunded_amount += refund.amount
+        voucher = await self._voucher_for_order(order.id)
+        appointment = await self.session.scalar(
+            select(DirectAppointment).where(DirectAppointment.order_id == order.id)
+        )
+        if order.refunded_amount >= order.total_amount:
+            order.status = "refunded"
+            if voucher is not None and voucher.state == "available":
+                voucher.state = "refunded"
+                voucher.revoked_at = utcnow()
+                voucher.version += 1
+            if appointment is not None and appointment.status == "confirmed":
+                appointment.status = "cancelled"
+                appointment.version += 1
+            if voucher is None or voucher.state != "consumed":
+                await self.session.execute(
+                    update(DirectProduct)
+                    .where(DirectProduct.id == order.product_id)
+                    .values(
+                        stock=DirectProduct.stock + order.quantity,
+                        sold_count=DirectProduct.sold_count - order.quantity,
+                    )
+                )
+        else:
+            order.status = "partially_refunded"
+
+    async def _try_close_gateway(self, order: DirectOrder) -> None:
+        connection = await self._connection_for_order(order)
+        if connection is None or connection.mode != ConnectionMode.LIVE.value:
+            return
+        bundle = self._secrets(connection)
+        merchant_id = order.mchid_snapshot or connection.merchant_id
+        try:
+            await WeChatPayClient(self.http_client).close_order(
+                order_no=order.order_no,
+                merchant_id=self._required_value(merchant_id, "微信支付商户号"),
+                merchant_serial_no=self._required(bundle, "merchant_serial_no", "商户证书序列号"),
+                merchant_private_key_pem=self._required(
+                    bundle, "merchant_private_key_pem", "微信支付商户私钥"
+                ),
+                wechatpay_public_key_pem=self._required(
+                    bundle, "wechatpay_public_key_pem", "微信支付公钥"
+                ),
+                sub_mchid=order.sub_mchid_snapshot,
+            )
+        except DirectCommerceError:
+            return
+
+    async def _connection_for_order(self, order: DirectOrder) -> WeChatConnection | None:
+        if order.payment_profile_id:
+            profile = await self.session.get(MerchantPaymentProfile, order.payment_profile_id)
+            if profile is not None and profile.connection_id:
+                return await self.session.get(WeChatConnection, profile.connection_id)
+        if order.mini_program_id:
+            app = await self.session.get(MerchantMiniProgram, order.mini_program_id)
+            if app is not None and app.connection_id:
+                return await self.session.get(WeChatConnection, app.connection_id)
+        return None
 
     async def _ready_app(self, mini_program_id: str) -> MerchantMiniProgram:
         app = await self._tenantless_app(mini_program_id)

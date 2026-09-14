@@ -237,6 +237,7 @@ class DirectOrder(Base):
     unit_amount: Mapped[int] = mapped_column(Integer, nullable=False)
     total_amount: Mapped[int] = mapped_column(Integer, nullable=False)
     paid_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    refunded_amount: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(40), nullable=False, default="payment_pending")
     prepay_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
     transaction_id: Mapped[str | None] = mapped_column(String(160), nullable=True, unique=True)
@@ -310,12 +311,55 @@ class DirectAppointment(Base):
     )
 
 
+class DirectRefund(Base):
+    __tablename__ = "direct_refunds"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "refund_no", name="uq_direct_refund_no"),
+        UniqueConstraint("tenant_id", "idempotency_key", name="uq_direct_refund_idempotency"),
+        CheckConstraint("amount > 0", name="ck_direct_refund_amount"),
+        Index("ix_direct_refund_tenant_status", "tenant_id", "status"),
+        Index("ix_direct_refund_order", "order_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    order_id: Mapped[str] = mapped_column(
+        ForeignKey("direct_orders.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    store_id: Mapped[str] = mapped_column(
+        ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    payment_profile_id: Mapped[str | None] = mapped_column(
+        ForeignKey("merchant_payment_profiles.id", ondelete="SET NULL"), nullable=True
+    )
+    refund_no: Mapped[str] = mapped_column(String(64), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending")
+    transaction_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    wechat_refund_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
 __all__ = [
     "ConsumerIdentity",
     "ConsumerSession",
     "DirectAppointment",
     "DirectOrder",
     "DirectProduct",
+    "DirectRefund",
     "DirectVoucher",
     "MerchantPaymentProfile",
     "PlatformConsumerIdentity",

@@ -25,6 +25,7 @@ from .models import (
     DirectAppointment,
     DirectOrder,
     DirectProduct,
+    DirectRefund,
     DirectVoucher,
     MerchantPaymentProfile,
     PlatformConsumerIdentity,
@@ -425,6 +426,9 @@ class PlatformCommerceService:
                 "wechatpay_notification_invalid", "支付通知格式无效", 400
             ) from error
         if transaction.get("trade_state") != "SUCCESS":
+            out_refund_no = transaction.get("out_refund_no")
+            if isinstance(out_refund_no, str) and out_refund_no:
+                await self._handle_refund_notification(transaction, profile, out_refund_no)
             return
         order_no = transaction.get("out_trade_no")
         order = await self.session.scalar(
@@ -506,6 +510,41 @@ class PlatformCommerceService:
         await self.session.commit()
         await self.session.refresh(row)
         return row
+
+    async def _handle_refund_notification(
+        self,
+        transaction: dict[str, Any],
+        profile: MerchantPaymentProfile,
+        out_refund_no: str,
+    ) -> None:
+        refund = await self.session.scalar(
+            select(DirectRefund).where(
+                DirectRefund.refund_no == out_refund_no,
+                DirectRefund.payment_profile_id == profile.id,
+            )
+        )
+        if refund is None:
+            raise DirectCommerceError("refund_not_found", "退款通知对应退款单不存在", 404)
+        order = await self.session.scalar(
+            select(DirectOrder).where(DirectOrder.id == refund.order_id).with_for_update()
+        )
+        if order is None:
+            raise DirectCommerceError("order_not_found", "退款通知对应订单不存在", 404)
+        refund_id = transaction.get("refund_id")
+        if isinstance(refund_id, str) and refund_id and not refund.wechat_refund_id:
+            refund.wechat_refund_id = refund_id
+        refund_status = transaction.get("refund_status")
+        if refund_status == "SUCCESS":
+            if refund.status != "success":
+                await DirectCommerceService(self.session, self.settings)._apply_refund(
+                    order, refund
+                )
+                refund.status = "success"
+                refund.version += 1
+        elif refund_status == "CLOSED":
+            refund.status = "failed"
+            refund.version += 1
+        await self.session.commit()
 
     async def _openid_from_code(
         self, program: PlatformMiniProgram, connection: WeChatConnection, code: str

@@ -220,6 +220,30 @@ class StoreEntryResponse(BaseModel):
     blockers: list[str]
 
 
+class RefundCreate(BaseModel):
+    amount: int = Field(gt=0, le=100_000_000)
+    reason: str | None = Field(default=None, max_length=200)
+    idempotency_key: str = Field(min_length=8, max_length=128)
+
+
+class RefundResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    tenant_id: str
+    order_id: str
+    store_id: str
+    refund_no: str
+    amount: int
+    reason: str | None
+    status: str
+    transaction_id: str | None
+    wechat_refund_id: str | None
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
 __all__ = [
     "AppointmentCreate",
     "AppointmentResponse",
@@ -235,6 +259,8 @@ __all__ = [
     "PaymentProfileUpdate",
     "PaymentRequest",
     "PaymentResponse",
+    "RefundCreate",
+    "RefundResponse",
     "StoreEntryResponse",
     "VoucherConsumeRequest",
     "VoucherResponse",

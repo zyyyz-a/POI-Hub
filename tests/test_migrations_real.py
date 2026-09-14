@@ -66,6 +66,7 @@ def test_fresh_database_can_run_real_alembic_upgrade_and_is_idempotent(tmp_path:
             "direct_orders",
             "direct_vouchers",
             "direct_appointments",
+            "direct_refunds",
             "platform_mini_programs",
             "mini_program_store_bindings",
             "merchant_payment_profiles",
@@ -77,7 +78,7 @@ def test_fresh_database_can_run_real_alembic_upgrade_and_is_idempotent(tmp_path:
             revision = connection.execute(
                 text("select version_num from alembic_version")
             ).scalar_one()
-            assert revision == "0015_single_quantity_orders"
+            assert revision == "0016_direct_refunds"
         assert any(
             index["name"] == "ix_operation_claimable"
             for index in inspector.get_indexes("integration_operations")

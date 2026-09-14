@@ -4,15 +4,29 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import os
 import socket
+import time
 from uuid import uuid4
 
 import httpx
 
 from .core.config import Settings, get_settings
 from .core.database import Database, create_database
+from .direct_commerce.service import DirectCommerceService
 from .operations.worker import OperationWorker
+
+logger = logging.getLogger("poi_admin.worker")
+MAINTENANCE_INTERVAL_SECONDS = 60.0
+
+
+async def _run_maintenance(database: Database, settings: Settings) -> None:
+    async with database.session_factory() as session:
+        try:
+            await DirectCommerceService(session, settings).run_maintenance()
+        except Exception:
+            logger.exception("direct_commerce_maintenance_failed")
 
 
 async def _run_slot(
@@ -26,6 +40,7 @@ async def _run_slot(
 ) -> None:
     instance = f"{socket.gethostname()}:{os.getpid()}:{uuid4().hex[:12]}:{slot}"[-100:]
     prefer_webhook = slot % 2 == 0
+    last_maintenance = time.monotonic()
     while True:
         processed = 0
         for _ in range(burst_size):
@@ -44,6 +59,9 @@ async def _run_slot(
             processed += 1
             prefer_webhook = not prefer_webhook
         if processed == 0:
+            if time.monotonic() - last_maintenance >= MAINTENANCE_INTERVAL_SECONDS:
+                await _run_maintenance(database, settings)
+                last_maintenance = time.monotonic()
             await asyncio.sleep(max(0.1, poll_seconds))
 
 
