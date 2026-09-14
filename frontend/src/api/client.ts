@@ -383,6 +383,34 @@ export interface BillingSummaryRecord {
   blockers: string[]
 }
 
+export interface ReconciliationBatchRecord {
+  id: string
+  tenant_id: string
+  provider: string
+  bill_date: string
+  source: string
+  statement_total: number
+  platform_total: number
+  matched_count: number
+  difference_count: number
+  status: string
+  created_at: string
+}
+
+export interface ReconciliationItemRecord {
+  id: string
+  batch_id: string
+  order_no?: string | null
+  transaction_id?: string | null
+  statement_amount?: number | null
+  platform_amount?: number | null
+  status: string
+  note?: string | null
+  resolved: boolean
+  resolved_note?: string | null
+  created_at: string
+}
+
 export class ApiError extends Error {
   status: number
   code?: string
@@ -554,6 +582,10 @@ export const api = {
   recordBillingPayment: (invoiceId: string, payload: Record<string, unknown>) => request<unknown>(`/api/v1/billing/invoices/${invoiceId}/payments`, { method: 'POST', body: JSON.stringify(payload) }),
   recordBillingAdjustment: (invoiceId: string, payload: Record<string, unknown>) => request<unknown>(`/api/v1/billing/invoices/${invoiceId}/adjustments`, { method: 'POST', body: JSON.stringify(payload) }),
   billingSummary: () => request<BillingSummaryRecord>('/api/v1/billing/summary'),
+  reconciliationBatches: () => request<ReconciliationBatchRecord[]>('/api/v1/direct-commerce/reconciliation/batches'),
+  importReconciliation: (payload: { bill_date: string; csv?: string; rows?: Array<Record<string, unknown>> }) => request<ReconciliationBatchRecord>('/api/v1/direct-commerce/reconciliation/import', { method: 'POST', body: JSON.stringify(payload) }),
+  reconciliationItems: (batchId: string) => request<ReconciliationItemRecord[]>(`/api/v1/direct-commerce/reconciliation/batches/${batchId}/items`),
+  resolveReconciliationItem: (itemId: string, note: string) => request<ReconciliationItemRecord>(`/api/v1/direct-commerce/reconciliation/items/${itemId}/resolve`, { method: 'POST', body: JSON.stringify({ note }) }),
 }
 
 export function dashboardValues(payload: DashboardSummary | { summary: DashboardSummary }): DashboardSummary {

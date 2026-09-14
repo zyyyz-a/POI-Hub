@@ -23,6 +23,7 @@ import { OnboardingPage } from './pages/OnboardingPage'
 import { DirectCommercePage } from './pages/DirectCommercePage'
 import { PlatformMiniappPage } from './pages/PlatformMiniappPage'
 import { BillingPage } from './pages/BillingPage'
+import { ReconciliationPage } from './pages/ReconciliationPage'
 import './styles.css'
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 1 } } })
@@ -45,6 +46,7 @@ function Protected() {
     <Route path="/onboarding" element={<OnboardingPage />} />
     <Route path="/platform-miniapp" element={<PlatformMiniappPage />} />
     <Route path="/direct-commerce" element={<DirectCommercePage />} />
+    <Route path="/reconciliation" element={<ReconciliationPage />} />
     <Route path="/products" element={<ProductsPage />} />
     <Route path="/orders" element={<OrdersPage />} />
     <Route path="/accounting" element={<AccountingPage />} />
