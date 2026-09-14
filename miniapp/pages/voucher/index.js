@@ -1,13 +1,38 @@
 const api = require('../../common/api')
+const util = require('../../common/util')
 
 Page({
-  data: { code: '', voucher: null },
-  async onLoad(options) {
+  data: { state: 'loading', message: '', voucher: null, code: '', store: null },
+  onLoad(options) {
+    this.orderId = options.orderId
+  },
+  onShow() {
+    this.load()
+  },
+  async load() {
+    this.setData({ state: 'loading', message: '' })
     try {
-      const result = await api.voucher(options.orderId)
-      this.setData(result)
+      await getApp().ensureLogin()
+      const result = await api.voucher(getApp().globalData.storeCode, this.orderId)
+      this.setData({
+        state: 'content',
+        voucher: util.decorateVoucher(result.voucher),
+        code: result.code,
+        store: getApp().globalData.store
+      })
     } catch (error) {
-      wx.showToast({ title: error.message || '券码加载失败', icon: 'none' })
+      if (error.status === 409 || error.status === 404) {
+        this.setData({ state: 'blocked', message: error.message })
+        return
+      }
+      this.setData({ state: 'error', message: error.message })
     }
+  },
+  copyCode() {
+    if (!this.data.code) return
+    wx.setClipboardData({ data: this.data.code })
+  },
+  goOrders() {
+    wx.switchTab({ url: '/pages/orders/index' })
   }
 })

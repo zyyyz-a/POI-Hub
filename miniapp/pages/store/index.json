@@ -1,1 +1,7 @@
-{ "navigationBarTitleText": "门店服务", "enablePullDownRefresh": true }
+{
+  "navigationBarTitleText": "门店",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "page-state": "/components/page-state/index"
+  }
+}

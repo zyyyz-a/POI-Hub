@@ -1,23 +1,33 @@
 {
   "pages": [
     "pages/store/index",
-    "pages/product/index",
     "pages/orders/index",
+    "pages/profile/index",
+    "pages/product/index",
+    "pages/order-confirm/index",
+    "pages/pay-result/index",
+    "pages/order-detail/index",
     "pages/appointment/index",
-    "pages/voucher/index"
+    "pages/voucher/index",
+    "pages/refund/index",
+    "pages/entry-error/index"
   ],
   "window": {
     "navigationBarTitleText": "到店服务",
-    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarBackgroundColor": "#FFFFFF",
     "navigationBarTextStyle": "black",
-    "backgroundColor": "#f5f6f8"
+    "backgroundColor": "#F6F7F9",
+    "backgroundTextStyle": "dark"
   },
   "tabBar": {
-    "color": "#7b8190",
-    "selectedColor": "#111827",
+    "color": "#6B7280",
+    "selectedColor": "#1677FF",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "black",
     "list": [
       { "pagePath": "pages/store/index", "text": "首页" },
-      { "pagePath": "pages/orders/index", "text": "订单" }
+      { "pagePath": "pages/orders/index", "text": "订单" },
+      { "pagePath": "pages/profile/index", "text": "我的" }
     ]
   },
   "style": "v2",

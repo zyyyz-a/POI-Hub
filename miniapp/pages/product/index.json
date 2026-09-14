@@ -1,1 +1,6 @@
-{ "navigationBarTitleText": "服务详情" }
+{
+  "navigationBarTitleText": "套餐详情",
+  "usingComponents": {
+    "page-state": "/components/page-state/index"
+  }
+}

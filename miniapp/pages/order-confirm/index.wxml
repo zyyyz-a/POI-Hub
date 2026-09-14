@@ -1,0 +1,43 @@
+<view class="page with-bottom-bar">
+  <view wx:if="{{store}}" class="card">
+    <view class="subtitle">{{store.store_name}}</view>
+    <view class="muted">{{store.address}}</view>
+  </view>
+
+  <view wx:if="{{product}}" class="card">
+    <view class="row">
+      <image wx:if="{{product.cover_image}}" class="thumb" src="{{product.cover_image}}" mode="aspectFill" />
+      <view class="grow">
+        <view class="subtitle">{{product.name}}</view>
+        <view class="muted ellipsis">{{product.description}}</view>
+        <view class="row-between" style="margin-top:12rpx">
+          <view class="price"><text class="price-symbol">¥</text>{{product.sale_price / 100}}</view>
+          <view class="muted">x1</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{product}}" class="card">
+    <view class="row-between"><view class="muted">商品金额</view><view>¥{{product.sale_price / 100}}</view></view>
+    <view class="row-between" style="margin-top:16rpx"><view class="muted">优惠</view><view>¥0.00</view></view>
+    <view class="divider"></view>
+    <view class="row-between"><view class="subtitle">应付总额</view><view class="price"><text class="price-symbol">¥</text>{{product.sale_price / 100}}</view></view>
+  </view>
+
+  <view class="card">
+    <view class="section-title">预约与退款</view>
+    <view class="bullet"><text class="bullet-dot">·</text><text>{{product.appointment_required ? '付款后需预约到店时间' : '到店即可使用'}}</text></view>
+    <view class="bullet"><text class="bullet-dot">·</text><text>未核销且未过期可按规则申请退款，退款原路返回</text></view>
+    <view class="checkbox-row" bindtap="toggleAgree">
+      <checkbox checked="{{agreed}}" />
+      <text style="margin-left:8rpx">我已阅读并同意《退款规则》和《用户协议》</text>
+    </view>
+    <view wx:if="{{error}}" class="form-error">{{error}}</view>
+  </view>
+</view>
+
+<view wx:if="{{product}}" class="bottom-bar">
+  <view class="price"><text class="price-symbol">¥</text>{{product.sale_price / 100}}</view>
+  <view class="btn btn-primary {{paying || !agreed ? 'disabled' : ''}}" bindtap="pay">{{paying ? '处理中…' : '微信支付'}}</view>
+</view>

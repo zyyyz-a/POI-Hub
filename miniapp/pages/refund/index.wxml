@@ -1,0 +1,42 @@
+<view class="page with-bottom-bar">
+  <page-state
+    wx:if="{{state !== 'content'}}"
+    state="{{state}}"
+    message="{{message}}"
+    bind:action="load"
+  />
+
+  <block wx:if="{{order}}">
+    <view class="card">
+      <view class="row-between">
+        <view class="subtitle">{{order.product_name}}</view>
+        <view class="tag tag-{{order.status_tone}}">{{order.status_text}}</view>
+      </view>
+      <view class="row-between" style="margin-top:12rpx"><view class="muted">订单号</view><view>{{order.order_no}}</view></view>
+      <view class="row-between" style="margin-top:12rpx"><view class="muted">可退金额</view><view class="price"><text class="price-symbol">¥</text>{{(order.total_amount - order.refunded_amount) / 100}}</view></view>
+    </view>
+
+    <view wx:if="{{!done}}" class="card">
+      <view class="section-title">退款原因</view>
+      <textarea class="refund-input" value="{{reason}}" bindinput="field" placeholder="请简要说明退款原因（选填）" maxlength="200"></textarea>
+      <view wx:if="{{error}}" class="form-error">{{error}}</view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">退款规则</view>
+      <view class="bullet"><text class="bullet-dot">·</text><text>未核销且未过期的订单可申请退款</text></view>
+      <view class="bullet"><text class="bullet-dot">·</text><text>提交后由门店确认，退款原路返回微信支付账户</text></view>
+      <view class="bullet"><text class="bullet-dot">·</text><text>退款处理期间券码暂停使用</text></view>
+    </view>
+
+    <view wx:if="{{done}}" class="card">
+      <view class="title">退款申请已提交</view>
+      <view class="muted" style="margin-top:12rpx">门店确认后将原路退回，可在订单详情查看进度。</view>
+    </view>
+  </block>
+</view>
+
+<view wx:if="{{order}}" class="bottom-bar">
+  <view wx:if="{{!done}}" class="btn btn-primary btn-block {{submitting ? 'disabled' : ''}}" bindtap="submit">{{submitting ? '提交中…' : '提交退款申请'}}</view>
+  <view wx:else class="btn btn-primary btn-block" bindtap="goOrders">返回订单</view>
+</view>

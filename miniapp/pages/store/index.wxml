@@ -1,14 +1,50 @@
 <view class="page">
-  <view class="card">
-    <view class="title">{{store.store_name || '到店服务'}}</view>
-    <view class="muted">{{store.address || '在线购买，到店预约和核销'}}</view>
-    <view wx:if="{{store.contact_phone_masked}}" class="muted">电话 {{store.contact_phone_masked}}</view>
-  </view>
-  <view wx:if="{{loading}}" class="card muted">正在加载…</view>
-  <view wx:if="{{blocked}}" class="card muted">暂不能营业：{{blocked}}</view>
-  <view wx:for="{{products}}" wx:key="id" class="card" bindtap="openProduct" data-id="{{item.id}}">
-    <image wx:if="{{item.cover_image}}" src="{{item.cover_image}}" mode="aspectFill" style="width:100%;height:300rpx;border-radius:18rpx" />
-    <view class="title">{{item.name}}</view><view class="muted">{{item.description}}</view>
-    <view class="price">¥{{item.sale_price / 100}}</view><view class="muted">剩余 {{item.stock}} 份</view>
-  </view>
+  <page-state
+    wx:if="{{state !== 'content' && state !== 'blocked'}}"
+    state="{{state}}"
+    message="{{message}}"
+    bind:action="load"
+  />
+
+  <block wx:if="{{store}}">
+    <view class="hero">
+      <view class="title">{{store.store_name}}</view>
+      <view class="muted" style="margin-top:8rpx">{{store.address}}</view>
+      <view class="op-row">
+        <view class="op" bindtap="openLocation">导航</view>
+        <view class="op" bindtap="callStore">电话</view>
+      </view>
+    </view>
+
+    <view wx:if="{{blocked}}" class="card">
+      <view class="section-title">暂不能营业</view>
+      <view class="muted">{{blocked}}</view>
+      <view class="muted" style="margin-top:8rpx">请稍后再试，或联系客服。</view>
+    </view>
+
+    <block wx:if="{{state === 'content'}}">
+      <view class="section-title">本店套餐</view>
+      <view
+        wx:for="{{products}}"
+        wx:key="id"
+        class="card"
+        bindtap="openProduct"
+        data-id="{{item.id}}"
+      >
+        <view class="row">
+          <image wx:if="{{item.cover_image}}" class="thumb" src="{{item.cover_image}}" mode="aspectFill" />
+          <view class="grow">
+            <view class="subtitle">{{item.name}}</view>
+            <view class="muted ellipsis">{{item.description}}</view>
+            <view class="row-between" style="margin-top:12rpx">
+              <view class="price"><text class="price-symbol">¥</text>{{item.sale_price / 100}}</view>
+              <view class="muted">已售 {{item.sold_count}}</view>
+            </view>
+            <view class="muted">{{item.stock_text}}</view>
+          </view>
+        </view>
+      </view>
+      <view class="card muted">服务保障：真实门店 · 到店核销 · 未使用可申请退款</view>
+    </block>
+  </block>
 </view>

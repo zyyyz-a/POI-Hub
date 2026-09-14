@@ -1,31 +1,29 @@
 const api = require('../../common/api')
+const util = require('../../common/util')
 
 Page({
-  data: { product: null, paying: false },
+  data: { state: 'loading', message: '', product: null },
   onLoad(options) {
-    const product = getApp().globalData.products.find(item => item.id === options.id)
-    this.setData({ product })
+    this.productId = options.id
   },
-  async buy() {
-    if (this.data.paying) return
-    this.setData({ paying: true })
+  onShow() {
+    if (!this.data.product) this.load()
+  },
+  async load() {
+    const storeCode = getApp().globalData.storeCode
+    this.setData({ state: 'loading', message: '' })
     try {
-      await getApp().ensureLogin()
-      const order = await api.createOrder({
-        product_id: this.data.product.id,
-        quantity: 1,
-        idempotency_key: `wx-${Date.now()}-${Math.random()}`
-      })
-      const payment = await api.pay(order.id)
-      if (payment.payment_parameters?.mock !== 'true') {
-        await new Promise((resolve, reject) => wx.requestPayment({ ...payment.payment_parameters, success: resolve, fail: reject }))
-      }
-      getApp().globalData.currentOrder = payment.order
-      wx.navigateTo({ url: `/pages/appointment/index?orderId=${order.id}` })
+      const product = util.decorateProduct(await api.product(storeCode, this.productId))
+      this.setData({ state: 'content', product })
     } catch (error) {
-      wx.showModal({ title: '未完成购买', content: error.message || '请稍后重试', showCancel: false })
-    } finally {
-      this.setData({ paying: false })
+      this.setData({ state: 'error', message: error.message })
     }
+  },
+  buy() {
+    if (this.data.product && this.data.product.stock <= 0) {
+      wx.showToast({ title: '该套餐已售罄', icon: 'none' })
+      return
+    }
+    wx.navigateTo({ url: `/pages/order-confirm/index?id=${this.productId}` })
   }
 })

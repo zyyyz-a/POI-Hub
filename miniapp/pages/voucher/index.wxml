@@ -1,1 +1,32 @@
-<view class="page"><view class="card" style="text-align:center"><view class="muted">到店出示完整券码</view><view style="font-size:56rpx;font-weight:700;letter-spacing:6rpx;margin:30rpx 0">{{code}}</view><view class="muted">请勿将券码发给陌生人</view></view></view>
+<view class="page">
+  <page-state
+    wx:if="{{state !== 'content'}}"
+    state="{{state}}"
+    message="{{message}}"
+    bind:action="load"
+  />
+
+  <block wx:if="{{voucher}}">
+    <view class="card code-box" bindtap="copyCode">
+      <view wx:if="{{voucher.state === 'available'}}" class="code-text">{{code}}</view>
+      <view wx:else class="muted" style="font-size:28rpx">该券码当前不可使用</view>
+      <view class="muted-center">点击复制券码</view>
+    </view>
+
+    <view class="card">
+      <view class="row-between">
+        <view class="subtitle">{{voucher.code_masked}}</view>
+        <view class="tag tag-{{voucher.state_tone}}">{{voucher.state_text}}</view>
+      </view>
+      <view class="row-between" style="margin-top:16rpx"><view class="muted">门店</view><view>{{store.store_name || '-'}}</view></view>
+      <view class="row-between" style="margin-top:12rpx"><view class="muted">有效期至</view><view>{{voucher.valid_text}}</view></view>
+      <view wx:if="{{voucher.consumed_at}}" class="row-between" style="margin-top:12rpx"><view class="muted">核销时间</view><view>{{voucher.consumed_at}}</view></view>
+    </view>
+
+    <view class="card muted">
+      到店后请向店员出示券码，由店员在后台核销。券码只能使用一次，退款中的券码不可使用。
+    </view>
+
+    <view class="btn btn-ghost btn-block" bindtap="goOrders">返回订单</view>
+  </block>
+</view>

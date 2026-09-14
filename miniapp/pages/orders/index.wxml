@@ -1,1 +1,40 @@
-<view class="page"><view wx:if="{{order}}" class="card" bindtap="openVoucher"><view class="title">{{order.product_name}}</view><view class="muted">订单号 {{order.order_no}}</view><view>状态：{{order.status}}</view></view><view wx:else class="card muted">当前设备暂无订单记录</view></view>
+<view class="page">
+  <view class="filter-bar">
+    <view
+      wx:for="{{filters}}"
+      wx:key="key"
+      class="filter {{filter === item.key ? 'active' : ''}}"
+      bindtap="setFilter"
+      data-key="{{item.key}}"
+    >{{item.label}}</view>
+  </view>
+
+  <page-state
+    wx:if="{{state !== 'content'}}"
+    state="{{state}}"
+    message="{{message}}"
+    bind:action="load"
+  />
+
+  <view
+    wx:for="{{visible}}"
+    wx:key="id"
+    class="card"
+    bindtap="openDetail"
+    data-id="{{item.id}}"
+  >
+    <view class="row-between">
+      <view class="subtitle">{{item.product_name}}</view>
+      <view class="tag tag-{{item.status_tone}}">{{item.status_text}}</view>
+    </view>
+    <view class="muted" style="margin-top:8rpx">订单号 {{item.order_no}}</view>
+    <view class="row-between" style="margin-top:12rpx">
+      <view class="muted">{{item.created_text}}</view>
+      <view class="price"><text class="price-symbol">¥</text>{{item.total_amount / 100}}</view>
+    </view>
+    <view class="op-row">
+      <view wx:if="{{item.can_use}}" class="op" catchtap="openVoucher" data-id="{{item.id}}">查看券码</view>
+      <view class="op" catchtap="openDetail" data-id="{{item.id}}">查看详情</view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,19 @@
+<view wx:if="{{state === 'loading'}}" class="ps">
+  <view class="ps-spinner"></view>
+  <view class="ps-muted">正在加载…</view>
+</view>
+<view wx:elif="{{state === 'error'}}" class="ps">
+  <view class="ps-title">加载失败</view>
+  <view class="ps-muted">{{message || '网络异常，请稍后重试'}}</view>
+  <view class="ps-btn" bindtap="onAction">{{actionText || '重新加载'}}</view>
+</view>
+<view wx:elif="{{state === 'empty'}}" class="ps">
+  <view class="ps-title">暂无内容</view>
+  <view class="ps-muted">{{message || '这里暂时没有可展示的内容'}}</view>
+</view>
+<view wx:elif="{{state === 'blocked'}}" class="ps">
+  <view class="ps-title">暂不可用</view>
+  <view class="ps-muted">{{message}}</view>
+  <view wx:if="{{actionText}}" class="ps-btn" bindtap="onAction">{{actionText}}</view>
+</view>
+<slot wx:else />

@@ -1,0 +1,47 @@
+<view class="page">
+  <view class="cashier-hero">
+    <view wx:if="{{state === 'success'}}" class="cashier-icon success">✓</view>
+    <view wx:elif="{{state === 'confirming'}}" class="cashier-icon pending">…</view>
+    <view wx:else class="cashier-icon muted">!</view>
+    <view class="cashier-title">
+      <text wx:if="{{state === 'success'}}">支付成功</text>
+      <text wx:elif="{{state === 'confirming'}}">正在确认支付结果</text>
+      <text wx:elif="{{state === 'pending'}}">尚未确认到账</text>
+      <text wx:elif="{{state === 'closed'}}">订单已关闭</text>
+      <text wx:elif="{{state === 'cancel'}}">尚未完成支付</text>
+      <text wx:else>确认失败</text>
+    </view>
+    <view class="muted">
+      <text wx:if="{{state === 'success'}}">订单正在确认，可前往预约或查看券码</text>
+      <text wx:elif="{{state === 'confirming'}}">请勿重复付款，系统正在与微信支付核对</text>
+      <text wx:elif="{{state === 'pending'}}">仍未确认到账，请稍后刷新或联系客服</text>
+      <text wx:elif="{{state === 'closed'}}">订单将在超时后关闭，请重新下单</text>
+      <text wx:elif="{{state === 'cancel'}}">订单将在倒计时结束后自动关闭</text>
+      <text wx:else>{{message}}</text>
+    </view>
+  </view>
+
+  <view wx:if="{{order}}" class="card">
+    <view class="row-between"><view class="muted">订单号</view><view>{{order.order_no}}</view></view>
+    <view class="row-between" style="margin-top:12rpx"><view class="muted">商品</view><view>{{order.product_name}}</view></view>
+    <view class="row-between" style="margin-top:12rpx"><view class="muted">金额</view><view class="price"><text class="price-symbol">¥</text>{{order.total_amount / 100}}</view></view>
+    <view class="row-between" style="margin-top:12rpx"><view class="muted">状态</view><view>{{order.status_text}}</view></view>
+  </view>
+
+  <view wx:if="{{state === 'success'}}" class="card">
+    <view class="btn btn-primary btn-block" bindtap="goAppointment">立即预约</view>
+    <view class="btn btn-ghost btn-block" style="margin-top:16rpx" bindtap="goVoucher">查看券码</view>
+  </view>
+
+  <view wx:if="{{state === 'cancel' || state === 'closed'}}" class="card">
+    <view class="btn btn-primary btn-block" bindtap="goOrders">返回订单</view>
+  </view>
+
+  <view wx:if="{{state === 'pending' || state === 'error'}}" class="card">
+    <view class="btn btn-primary btn-block" bindtap="refresh">刷新结果</view>
+  </view>
+
+  <view class="card">
+    <view class="btn btn-ghost btn-block" bindtap="goOrderDetail">查看订单详情</view>
+  </view>
+</view>

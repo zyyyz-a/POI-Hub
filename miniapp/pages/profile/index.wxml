@@ -1,0 +1,31 @@
+<view class="page">
+  <view class="card hero">
+    <view class="title">到店服务</view>
+    <view class="muted" style="margin-top:8rpx">购买套餐、预约到店、出示券码核销</view>
+  </view>
+
+  <view class="card profile-list">
+    <view class="profile-item" bindtap="openOrders">
+      <text>我的订单</text>
+      <text class="profile-arrow">›</text>
+    </view>
+    <view class="profile-item" bindtap="callCustomerService">
+      <text>联系客服</text>
+      <text class="profile-arrow">›</text>
+    </view>
+    <view class="profile-item" bindtap="showAgreement">
+      <text>用户协议</text>
+      <text class="profile-arrow">›</text>
+    </view>
+    <view class="profile-item" bindtap="showPrivacy">
+      <text>隐私政策</text>
+      <text class="profile-arrow">›</text>
+    </view>
+    <view class="profile-item" bindtap="requestDeletion">
+      <text>账号注销 / 个人信息处理</text>
+      <text class="profile-arrow">›</text>
+    </view>
+  </view>
+
+  <view class="muted-center">当前版本 {{version}}</view>
+</view>

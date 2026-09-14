@@ -1,0 +1,38 @@
+<view class="page with-bottom-bar">
+  <page-state
+    wx:if="{{state !== 'content'}}"
+    state="{{state}}"
+    message="{{message}}"
+    bind:action="load"
+  />
+
+  <block wx:if="{{order}}">
+    <view class="card">
+      <view class="row-between">
+        <view class="title">{{order.status_text}}</view>
+        <view class="tag tag-{{order.status_tone}}">{{order.status_text}}</view>
+      </view>
+      <view class="muted" style="margin-top:12rpx">订单号 {{order.order_no}}</view>
+    </view>
+
+    <view class="card">
+      <view class="row-between"><view class="muted">商品</view><view>{{order.product_name}}</view></view>
+      <view class="row-between" style="margin-top:12rpx"><view class="muted">数量</view><view>{{order.quantity}}</view></view>
+      <view class="row-between" style="margin-top:12rpx"><view class="muted">实付金额</view><view class="price"><text class="price-symbol">¥</text>{{order.paid_amount / 100}}</view></view>
+      <view wx:if="{{order.refunded_amount > 0}}" class="row-between" style="margin-top:12rpx"><view class="muted">已退金额</view><view>¥{{order.refunded_amount / 100}}</view></view>
+      <view class="row-between" style="margin-top:12rpx"><view class="muted">下单时间</view><view>{{order.created_text}}</view></view>
+    </view>
+
+    <view wx:if="{{order.can_use}}" class="card">
+      <view class="btn btn-primary btn-block" bindtap="goAppointment">预约到店时间</view>
+      <view class="btn btn-ghost btn-block" style="margin-top:16rpx" bindtap="goVoucher">查看券码</view>
+    </view>
+  </block>
+</view>
+
+<view wx:if="{{order}}" class="bottom-bar">
+  <view class="grow muted">如需帮助请联系客服</view>
+  <view wx:if="{{order.can_pay}}" class="btn btn-primary {{paying ? 'disabled' : ''}}" bindtap="pay">{{paying ? '处理中…' : '继续支付'}}</view>
+  <view wx:elif="{{canRefund}}" class="btn btn-ghost" bindtap="goRefund">申请退款</view>
+  <view wx:else class="btn btn-ghost" bindtap="goVoucher">查看券码</view>
+</view>

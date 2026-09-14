@@ -1,4 +1,4 @@
 module.exports = {
   apiBaseUrl: 'https://poi.example.com/api/v1',
-  storeCode: 'demo-store'
+  customerServicePhone: '400-000-0000'
 }

@@ -1,0 +1,10 @@
+<view class="page">
+  <view class="card" style="text-align:center;padding:60rpx 40rpx">
+    <view class="title">门店暂时无法打开</view>
+    <view class="muted" style="margin-top:16rpx">{{message}}</view>
+  </view>
+  <view class="card">
+    <view class="btn btn-primary btn-block" bindtap="reload">重新加载</view>
+    <view class="btn btn-ghost btn-block" style="margin-top:16rpx" bindtap="callService">联系客服</view>
+  </view>
+</view>

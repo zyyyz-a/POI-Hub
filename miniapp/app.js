@@ -1,42 +1,50 @@
 const api = require('./common/api')
-
-function defaultStoreCode() {
-  try {
-    return require('./config').storeCode || ''
-  } catch (error) {
-    return require('./config.example').storeCode || ''
-  }
-}
-
-function parseStoreCode(options) {
-  const query = (options && options.query) || {}
-  if (query.store_code) return String(query.store_code)
-  if (query.scene) {
-    const scene = decodeURIComponent(String(query.scene))
-    const match = scene.match(/(?:^|&)store_code=([^&]+)/)
-    return match ? match[1] : scene
-  }
-  return defaultStoreCode()
-}
+const { parseEntry } = require('./common/entry')
 
 App({
-  globalData: { accessToken: '', storeCode: '', products: [], currentOrder: null },
+  globalData: {
+    accessToken: '',
+    storeCode: '',
+    store: null,
+    products: [],
+    currentOrder: null
+  },
   onLaunch(options) {
-    this.globalData.storeCode = parseStoreCode(options)
-    wx.login({
-      success: async ({ code }) => {
-        try {
-          const result = await api.login(code)
-          this.globalData.accessToken = result.access_token
-          if (this.loginReady) this.loginReady(result.access_token)
-        } catch (error) {
-          wx.showModal({ title: '登录失败', content: error.message || '请稍后重试', showCancel: false })
-        }
+    const storeCode = parseEntry(options)
+    this.globalData.storeCode = storeCode
+    if (storeCode) {
+      try {
+        wx.setStorageSync('lastStoreCode', storeCode)
+      } catch (error) {
+        // storage is best-effort only
       }
-    })
+    }
   },
   ensureLogin() {
     if (this.globalData.accessToken) return Promise.resolve(this.globalData.accessToken)
-    return new Promise(resolve => { this.loginReady = resolve })
+    if (this.loginPromise) return this.loginPromise
+    this.loginPromise = new Promise((resolve, reject) => {
+      if (!this.globalData.storeCode) {
+        reject(new Error('门店入口缺失，请从门店页面重新进入'))
+        return
+      }
+      wx.login({
+        success: async ({ code }) => {
+          try {
+            const result = await api.login(code, this.globalData.storeCode)
+            this.globalData.accessToken = result.access_token
+            resolve(result.access_token)
+          } catch (error) {
+            this.loginPromise = null
+            reject(error)
+          }
+        },
+        fail: () => {
+          this.loginPromise = null
+          reject(new Error('微信登录失败，请稍后重试'))
+        }
+      })
+    })
+    return this.loginPromise
   }
 })
