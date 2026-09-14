@@ -31,6 +31,7 @@ from .schemas import (
     PaymentRequest,
     PaymentResponse,
     RefundCreate,
+    RefundRequest,
     RefundResponse,
     StoreEntryResponse,
     VoucherConsumeRequest,
@@ -384,6 +385,34 @@ async def create_refund(
 
 
 @direct_commerce_router.post(
+    "/refunds/{refund_id}/approve", response_model=RefundResponse
+)
+async def approve_refund(
+    refund_id: str,
+    request: Request,
+    context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_ORDERS))],
+    csrf_context: Annotated[AuthContext, Depends(require_csrf)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> RefundResponse:
+    del csrf_context
+    try:
+        row = await _service(request, session).approve_refund(_tenant_id(context), refund_id)
+    except DirectCommerceError as error:
+        _raise(error)
+    response = RefundResponse.model_validate(row)
+    await _audit(
+        session,
+        request,
+        context,
+        "direct_refund.approved",
+        "direct_refund",
+        row.id,
+        response.model_dump(mode="json"),
+    )
+    return response
+
+
+@direct_commerce_router.post(
     "/orders/{order_id}/query", response_model=DirectOrderResponse
 )
 async def query_direct_order(
@@ -695,6 +724,64 @@ async def platform_create_appointment(
     except DirectCommerceError as error:
         _raise(error)
     return AppointmentResponse.model_validate(row)
+
+
+@platform_router.get(
+    "/stores/{store_code}/products/{product_id}", response_model=DirectProductResponse
+)
+async def platform_product(
+    store_code: str,
+    product_id: str,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DirectProductResponse:
+    try:
+        row = await _platform_service(request, session).product(store_code, product_id)
+    except DirectCommerceError as error:
+        _raise(error)
+    return DirectProductResponse.model_validate(row)
+
+
+@platform_router.get(
+    "/stores/{store_code}/orders", response_model=list[DirectOrderResponse]
+)
+async def platform_list_orders(
+    store_code: str,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[DirectOrderResponse]:
+    service = _platform_service(request, session)
+    try:
+        _, consumer = await service.consumer(_bearer(request), store_code)
+        rows = await service.orders(store_code, consumer.id)
+    except DirectCommerceError as error:
+        _raise(error)
+    return [DirectOrderResponse.model_validate(item) for item in rows]
+
+
+@platform_router.post(
+    "/stores/{store_code}/orders/{order_id}/refund", response_model=RefundResponse
+)
+async def platform_request_refund(
+    store_code: str,
+    order_id: str,
+    payload: RefundRequest,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> RefundResponse:
+    service = _platform_service(request, session)
+    try:
+        _, consumer = await service.consumer(_bearer(request), store_code)
+        row = await service.request_refund(
+            store_code,
+            consumer,
+            order_id,
+            payload.reason,
+            payload.idempotency_key,
+        )
+    except DirectCommerceError as error:
+        _raise(error)
+    return RefundResponse.model_validate(row)
 
 
 @platform_router.post("/wechatpay/notify/{payment_profile_id}")

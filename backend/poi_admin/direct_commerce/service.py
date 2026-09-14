@@ -686,6 +686,79 @@ class DirectCommerceService:
         )
         self.session.add(refund)
         await self.session.flush()
+        await self._process_refund(order, refund)
+        return refund
+
+    async def request_consumer_refund(
+        self,
+        tenant_id: str,
+        order_id: str,
+        consumer_id: str,
+        reason: str | None,
+        idempotency_key: str,
+    ) -> DirectRefund:
+        order = await self.get_order(tenant_id, order_id)
+        if order.platform_consumer_id != consumer_id:
+            raise DirectCommerceError("order_not_found", "订单不存在", 404)
+        if order.status not in {"paid", "partially_refunded"}:
+            raise DirectCommerceError("order_not_refundable", "订单当前不能退款", 409)
+        amount = order.total_amount - order.refunded_amount
+        if amount <= 0:
+            raise DirectCommerceError("order_not_refundable", "订单已无可退金额", 409)
+        existing = await self.session.scalar(
+            select(DirectRefund).where(
+                DirectRefund.tenant_id == tenant_id,
+                DirectRefund.idempotency_key == idempotency_key,
+            )
+        )
+        if existing is not None:
+            return existing
+        refund = DirectRefund(
+            tenant_id=tenant_id,
+            order_id=order.id,
+            store_id=order.store_id,
+            payment_profile_id=order.payment_profile_id,
+            refund_no="RF" + secrets.token_hex(8).upper(),
+            idempotency_key=idempotency_key,
+            amount=amount,
+            reason=reason,
+            status="requested",
+            transaction_id=order.transaction_id,
+        )
+        self.session.add(refund)
+        try:
+            await self.session.commit()
+        except IntegrityError:
+            await self.session.rollback()
+            duplicate = await self.session.scalar(
+                select(DirectRefund).where(
+                    DirectRefund.tenant_id == tenant_id,
+                    DirectRefund.idempotency_key == idempotency_key,
+                )
+            )
+            if duplicate is None:
+                raise DirectCommerceError("refund_conflict", "退款申请冲突", 409) from None
+            return duplicate
+        await self.session.refresh(refund)
+        return refund
+
+    async def approve_refund(self, tenant_id: str, refund_id: str) -> DirectRefund:
+        refund = await self.session.scalar(
+            select(DirectRefund).where(
+                DirectRefund.tenant_id == tenant_id, DirectRefund.id == refund_id
+            )
+        )
+        if refund is None:
+            raise DirectCommerceError("refund_not_found", "退款单不存在", 404)
+        if refund.status != "requested":
+            raise DirectCommerceError("refund_not_pending", "退款单当前不能受理", 409)
+        order = await self.get_order(tenant_id, refund.order_id)
+        refund.status = "pending"
+        await self._process_refund(order, refund)
+        return refund
+
+    async def _process_refund(self, order: DirectOrder, refund: DirectRefund) -> None:
+        amount = refund.amount
         connection = await self._connection_for_order(order)
         if connection is None or connection.mode == ConnectionMode.MOCK.value:
             await self._apply_refund(order, refund)
@@ -694,7 +767,7 @@ class DirectCommerceService:
             refund.version += 1
             await self.session.commit()
             await self.session.refresh(refund)
-            return refund
+            return
         bundle = self._secrets(connection)
         merchant_id = order.mchid_snapshot or connection.merchant_id
         try:
@@ -703,7 +776,7 @@ class DirectCommerceService:
                 transaction_id=order.transaction_id or "",
                 total=order.total_amount,
                 refund=amount,
-                reason=reason,
+                reason=refund.reason,
                 merchant_id=self._required_value(merchant_id, "微信支付商户号"),
                 merchant_serial_no=self._required(bundle, "merchant_serial_no", "商户证书序列号"),
                 merchant_private_key_pem=self._required(
@@ -728,7 +801,6 @@ class DirectCommerceService:
         refund.version += 1
         await self.session.commit()
         await self.session.refresh(refund)
-        return refund
 
     async def query_order(self, tenant_id: str, order_id: str) -> DirectOrder:
         order = await self.get_order(tenant_id, order_id)

@@ -195,3 +195,51 @@ async def test_expired_order_is_closed_and_stock_released(client: AsyncClient) -
 
     products = await client.get("/api/v1/public/platform/stores/store-expire/products")
     assert products.json()[0]["stock"] == 10
+
+
+@pytest.mark.asyncio
+async def test_consumer_refund_request_and_merchant_approval(client: AsyncClient) -> None:
+    csrf, tenant_id = await login(client)
+    headers = {"X-CSRF-Token": csrf, "X-Tenant-ID": tenant_id}
+    store = await _ready_store(
+        client, csrf, tenant_id, store_code="store-request", product_code="RF-004"
+    )
+    consumer_headers, order_id, _ = await _buy_and_pay(
+        client, "store-request", store, key="refund-order-0004"
+    )
+
+    detail = await client.get(
+        f"/api/v1/public/platform/stores/store-request/products/{store['product_id']}"
+    )
+    assert detail.status_code == 200, detail.text
+
+    listed = await client.get(
+        "/api/v1/public/platform/stores/store-request/orders",
+        headers=consumer_headers,
+    )
+    assert listed.status_code == 200, listed.text
+    assert [item["id"] for item in listed.json()] == [order_id]
+
+    requested = await client.post(
+        f"/api/v1/public/platform/stores/store-request/orders/{order_id}/refund",
+        headers=consumer_headers,
+        json={"reason": "临时有事", "idempotency_key": "consumer-refund-0001"},
+    )
+    assert requested.status_code == 200, requested.text
+    assert requested.json()["status"] == "requested"
+
+    refunds = await client.get(
+        "/api/v1/direct-commerce/refunds", headers={"X-Tenant-ID": tenant_id}
+    )
+    refund_row = next(item for item in refunds.json() if item["order_id"] == order_id)
+    assert refund_row["status"] == "requested"
+
+    approved = await client.post(
+        f"/api/v1/direct-commerce/refunds/{refund_row['id']}/approve", headers=headers
+    )
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "success"
+
+    orders = await client.get("/api/v1/direct-commerce/orders", headers={"X-Tenant-ID": tenant_id})
+    order_row = next(item for item in orders.json() if item["id"] == order_id)
+    assert order_row["status"] == "refunded"

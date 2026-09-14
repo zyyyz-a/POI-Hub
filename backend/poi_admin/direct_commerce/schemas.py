@@ -227,6 +227,11 @@ class RefundCreate(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=128)
 
 
+class RefundRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=200)
+    idempotency_key: str = Field(min_length=8, max_length=128)
+
+
 class RefundResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -261,6 +266,7 @@ __all__ = [
     "PaymentRequest",
     "PaymentResponse",
     "RefundCreate",
+    "RefundRequest",
     "RefundResponse",
     "StoreEntryResponse",
     "VoucherConsumeRequest",

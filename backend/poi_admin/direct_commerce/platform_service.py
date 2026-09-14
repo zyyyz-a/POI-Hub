@@ -205,6 +205,55 @@ class PlatformCommerceService:
         )
         return list(rows.scalars().all())
 
+    async def product(self, store_code: str, product_id: str) -> DirectProduct:
+        entry = await self.resolve(store_code)
+        await self.require_tradable(entry)
+        row = await self.session.scalar(
+            select(DirectProduct).where(
+                DirectProduct.id == product_id,
+                DirectProduct.tenant_id == entry.binding.tenant_id,
+                DirectProduct.store_id == entry.store.id,
+                DirectProduct.status == "listed",
+            )
+        )
+        if row is None:
+            raise DirectCommerceError("product_not_available", "商品当前不可购买", 404)
+        return row
+
+    async def orders(self, store_code: str, consumer_id: str) -> list[DirectOrder]:
+        entry = await self.resolve(store_code)
+        rows = await self.session.execute(
+            select(DirectOrder)
+            .where(
+                DirectOrder.tenant_id == entry.binding.tenant_id,
+                DirectOrder.store_binding_id == entry.binding.id,
+                DirectOrder.platform_consumer_id == consumer_id,
+            )
+            .order_by(DirectOrder.created_at.desc())
+        )
+        return list(rows.scalars().all())
+
+    async def request_refund(
+        self,
+        store_code: str,
+        consumer: PlatformConsumerIdentity,
+        order_id: str,
+        reason: str | None,
+        idempotency_key: str,
+    ) -> DirectRefund:
+        entry = await self.resolve(store_code)
+        order = await self.order(store_code, consumer.id, order_id)
+        service = DirectCommerceService(
+            self.session, self.settings, http_client=self.http_client
+        )
+        return await service.request_consumer_refund(
+            entry.binding.tenant_id,
+            order.id,
+            consumer.id,
+            reason,
+            idempotency_key,
+        )
+
     async def create_order(
         self,
         store_code: str,
