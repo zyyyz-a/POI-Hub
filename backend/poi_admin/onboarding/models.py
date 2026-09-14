@@ -20,6 +20,83 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+class PlatformMiniProgram(Base):
+    """Single platform-owned mini-program that serves many stores."""
+
+    __tablename__ = "platform_mini_programs"
+    __table_args__ = (
+        UniqueConstraint("app_id", name="uq_platform_app_id"),
+        Index("ix_platform_mini_program_status", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    app_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    owner_subject: Mapped[str] = mapped_column(String(200), nullable=False)
+    connection_id: Mapped[str | None] = mapped_column(
+        ForeignKey("wechat_connections.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="draft")
+    callback_configured: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_by_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    updated_by_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
+    )
+
+
+class MiniProgramStoreBinding(Base):
+    """Public store entry binding under a platform mini-program."""
+
+    __tablename__ = "mini_program_store_bindings"
+    __table_args__ = (
+        UniqueConstraint("store_code", name="uq_binding_store_code"),
+        UniqueConstraint(
+            "platform_mini_program_id", "store_id", name="uq_binding_program_store"
+        ),
+        Index("ix_binding_tenant_status", "tenant_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    platform_mini_program_id: Mapped[str] = mapped_column(
+        ForeignKey("platform_mini_programs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    tenant_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    store_id: Mapped[str] = mapped_column(
+        ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    store_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    tencent_poi_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    entry_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    entry_scene: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="draft")
+    official_reference: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    evidence_reference: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_by_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    updated_by_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
+    )
+
+
 class MerchantOnboardingCase(Base):
     """One merchant/store attempt through an official WeChat capability route."""
 
@@ -186,4 +263,10 @@ class PositionServiceMount(Base):
     )
 
 
-__all__ = ["MerchantMiniProgram", "MerchantOnboardingCase", "PositionServiceMount"]
+__all__ = [
+    "MerchantMiniProgram",
+    "MerchantOnboardingCase",
+    "MiniProgramStoreBinding",
+    "PlatformMiniProgram",
+    "PositionServiceMount",
+]

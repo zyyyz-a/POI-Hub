@@ -66,13 +66,18 @@ def test_fresh_database_can_run_real_alembic_upgrade_and_is_idempotent(tmp_path:
             "direct_orders",
             "direct_vouchers",
             "direct_appointments",
+            "platform_mini_programs",
+            "mini_program_store_bindings",
+            "merchant_payment_profiles",
+            "platform_consumer_identities",
+            "platform_consumer_sessions",
         }
         assert expected <= tables
         with engine.connect() as connection:
             revision = connection.execute(
                 text("select version_num from alembic_version")
             ).scalar_one()
-            assert revision == "0012_direct_commerce"
+            assert revision == "0013_platform_mini_programs"
         assert any(
             index["name"] == "ix_operation_claimable"
             for index in inspector.get_indexes("integration_operations")

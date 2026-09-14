@@ -109,6 +109,81 @@ class ConsumerSession(Base):
     )
 
 
+class MerchantPaymentProfile(Base):
+    """Per-store payment routing profile selected by the server, never the client."""
+
+    __tablename__ = "merchant_payment_profiles"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "store_id", name="uq_payment_profile_store"),
+        Index("ix_payment_profile_tenant_status", "tenant_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    store_id: Mapped[str] = mapped_column(
+        ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    connection_id: Mapped[str | None] = mapped_column(
+        ForeignKey("wechat_connections.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    mode: Mapped[str] = mapped_column(String(20), nullable=False, default="ordinary")
+    mchid: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    sub_mchid: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    sp_mchid: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="draft")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
+    )
+
+
+class PlatformConsumerIdentity(Base):
+    """Consumer identity scoped to the platform AppID, not to one merchant."""
+
+    __tablename__ = "platform_consumer_identities"
+    __table_args__ = (
+        UniqueConstraint(
+            "platform_mini_program_id", "openid_hash", name="uq_platform_consumer_openid"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    platform_mini_program_id: Mapped[str] = mapped_column(
+        ForeignKey("platform_mini_programs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    openid_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    openid_ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    last_login_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+
+class PlatformConsumerSession(Base):
+    __tablename__ = "platform_consumer_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    identity_id: Mapped[str] = mapped_column(
+        ForeignKey("platform_consumer_identities.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+
 class DirectOrder(Base):
     __tablename__ = "direct_orders"
     __table_args__ = (
@@ -135,6 +210,26 @@ class DirectOrder(Base):
     consumer_id: Mapped[str] = mapped_column(
         ForeignKey("consumer_identities.id", ondelete="RESTRICT"), nullable=False, index=True
     )
+    platform_mini_program_id: Mapped[str | None] = mapped_column(
+        ForeignKey("platform_mini_programs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    store_binding_id: Mapped[str | None] = mapped_column(
+        ForeignKey("mini_program_store_bindings.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    platform_consumer_id: Mapped[str | None] = mapped_column(
+        ForeignKey("platform_consumer_identities.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    payment_profile_id: Mapped[str | None] = mapped_column(
+        ForeignKey("merchant_payment_profiles.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    store_code_snapshot: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    payment_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    mchid_snapshot: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    sub_mchid_snapshot: Mapped[str | None] = mapped_column(String(128), nullable=True)
     order_no: Mapped[str] = mapped_column(String(64), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
     product_name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -222,6 +317,9 @@ __all__ = [
     "DirectOrder",
     "DirectProduct",
     "DirectVoucher",
+    "MerchantPaymentProfile",
+    "PlatformConsumerIdentity",
+    "PlatformConsumerSession",
     "new_id",
     "utcnow",
 ]
