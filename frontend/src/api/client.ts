@@ -57,6 +57,18 @@ export interface StoreRecord {
   version?: number
   city?: string | null
   district?: string | null
+  province?: string | null
+  contact_phone_masked?: string | null
+  public_phone?: string | null
+  latitude?: number | null
+  longitude?: number | null
+  cover_image?: string | null
+  logo?: string | null
+  business_hours?: string | null
+  intro?: string | null
+  environment_images?: string[]
+  service_guarantees?: string | null
+  appointment_notes?: string | null
 }
 
 export interface PoiRecord {

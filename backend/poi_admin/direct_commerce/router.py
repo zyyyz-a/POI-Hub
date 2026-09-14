@@ -676,16 +676,30 @@ async def resolve_store_entry(
     except DirectCommerceError as error:
         _raise(error)
     blockers = await service.blockers(entry)
+    store = entry.store
     return StoreEntryResponse(
         store_code=entry.binding.store_code,
-        store_name=entry.store.name,
-        address=entry.store.address,
-        city=entry.store.city,
-        district=entry.store.district,
-        contact_phone_masked=entry.store.contact_phone_masked,
-        latitude=entry.store.latitude,
-        longitude=entry.store.longitude,
+        store_name=store.name,
+        address=store.address,
+        city=store.city,
+        district=store.district,
+        contact_phone_masked=store.contact_phone_masked,
+        public_phone=store.public_phone,
+        latitude=store.latitude,
+        longitude=store.longitude,
+        logo=store.logo,
+        cover_image=store.cover_image,
+        business_hours=store.business_hours,
+        intro=store.intro,
+        environment_images=store.environment_images or [],
+        service_guarantees=store.service_guarantees,
+        appointment_notes=store.appointment_notes,
+        store_status=store.status,
         tradable=not blockers,
+        purchasable=not blockers,
+        notice=None
+        if not blockers
+        else "门店服务准备中，当前暂不可购买，可先查看门店与服务项目。",
         blockers=blockers,
     )
 
@@ -756,7 +770,7 @@ async def platform_get_order(
 ) -> DirectOrderResponse:
     service = _platform_service(request, session)
     try:
-        _, consumer = await service.consumer(_bearer(request), store_code)
+        _, consumer = await service.consumer(_bearer(request), store_code, tradable=False)
         row = await service.order(store_code, consumer.id, order_id)
     except DirectCommerceError as error:
         _raise(error)
@@ -853,7 +867,7 @@ async def platform_list_orders(
 ) -> list[DirectOrderResponse]:
     service = _platform_service(request, session)
     try:
-        _, consumer = await service.consumer(_bearer(request), store_code)
+        _, consumer = await service.consumer(_bearer(request), store_code, tradable=False)
         rows = await service.orders(store_code, consumer.id)
     except DirectCommerceError as error:
         _raise(error)
@@ -872,7 +886,7 @@ async def platform_request_refund(
 ) -> RefundResponse:
     service = _platform_service(request, session)
     try:
-        _, consumer = await service.consumer(_bearer(request), store_code)
+        _, consumer = await service.consumer(_bearer(request), store_code, tradable=False)
         row = await service.request_refund(
             store_code,
             consumer,

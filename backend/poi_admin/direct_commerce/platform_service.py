@@ -132,7 +132,6 @@ class PlatformCommerceService:
 
     async def login(self, store_code: str, code: str) -> tuple[str, datetime]:
         entry = await self.resolve(store_code)
-        await self.require_tradable(entry)
         connection = await self._program_connection(entry.program)
         openid = await self._openid_from_code(entry.program, connection, code)
         openid_hash = _hash(openid)
@@ -192,7 +191,6 @@ class PlatformCommerceService:
 
     async def products(self, store_code: str) -> list[DirectProduct]:
         entry = await self.resolve(store_code)
-        await self.require_tradable(entry)
         rows = await self.session.execute(
             select(DirectProduct)
             .where(
@@ -207,7 +205,6 @@ class PlatformCommerceService:
 
     async def product(self, store_code: str, product_id: str) -> DirectProduct:
         entry = await self.resolve(store_code)
-        await self.require_tradable(entry)
         row = await self.session.scalar(
             select(DirectProduct).where(
                 DirectProduct.id == product_id,

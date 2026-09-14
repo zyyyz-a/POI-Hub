@@ -27,6 +27,14 @@ class StoreCreateRequest(BaseModel):
     address: str = Field(min_length=1, max_length=500)
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
+    cover_image: str | None = Field(default=None, max_length=500)
+    logo: str | None = Field(default=None, max_length=500)
+    business_hours: str | None = Field(default=None, max_length=120)
+    public_phone: str | None = Field(default=None, max_length=32)
+    intro: str | None = Field(default=None, max_length=2000)
+    environment_images: list[str] = Field(default_factory=list, max_length=6)
+    service_guarantees: str | None = Field(default=None, max_length=2000)
+    appointment_notes: str | None = Field(default=None, max_length=2000)
     status: str = Field(default="active", pattern="^(active|inactive)$")
 
     @field_validator("code", "name", "address", mode="before")
@@ -47,6 +55,14 @@ class StoreUpdateRequest(BaseModel):
     address: str | None = Field(default=None, min_length=1, max_length=500)
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
+    cover_image: str | None = Field(default=None, max_length=500)
+    logo: str | None = Field(default=None, max_length=500)
+    business_hours: str | None = Field(default=None, max_length=120)
+    public_phone: str | None = Field(default=None, max_length=32)
+    intro: str | None = Field(default=None, max_length=2000)
+    environment_images: list[str] | None = Field(default=None, max_length=6)
+    service_guarantees: str | None = Field(default=None, max_length=2000)
+    appointment_notes: str | None = Field(default=None, max_length=2000)
     status: str | None = Field(default=None, pattern="^(active|inactive)$")
 
     @field_validator("code", "name", "address", mode="before")
@@ -79,6 +95,14 @@ class StoreResponse(BaseModel):
     address: str
     latitude: float | None
     longitude: float | None
+    cover_image: str | None
+    logo: str | None
+    business_hours: str | None
+    public_phone: str | None
+    intro: str | None
+    environment_images: list[str]
+    service_guarantees: str | None
+    appointment_notes: str | None
     status: str
     version: int
     created_at: datetime

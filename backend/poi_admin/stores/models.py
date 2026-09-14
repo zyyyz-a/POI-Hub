@@ -14,6 +14,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     text,
 )
@@ -51,6 +52,16 @@ class Store(Base):
     address: Mapped[str] = mapped_column(String(500), nullable=False)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cover_image: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    logo: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    business_hours: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    public_phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    intro: Mapped[str | None] = mapped_column(Text, nullable=True)
+    environment_images: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list
+    )
+    service_guarantees: Mapped[str | None] = mapped_column(Text, nullable=True)
+    appointment_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="active")
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(

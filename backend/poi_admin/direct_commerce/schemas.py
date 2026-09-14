@@ -215,9 +215,20 @@ class StoreEntryResponse(BaseModel):
     city: str | None
     district: str | None
     contact_phone_masked: str | None
+    public_phone: str | None
     latitude: float | None
     longitude: float | None
+    logo: str | None
+    cover_image: str | None
+    business_hours: str | None
+    intro: str | None
+    environment_images: list[str]
+    service_guarantees: str | None
+    appointment_notes: str | None
+    store_status: str
     tradable: bool
+    purchasable: bool
+    notice: str | None
     blockers: list[str]
 
 

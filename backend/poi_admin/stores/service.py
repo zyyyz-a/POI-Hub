@@ -99,6 +99,14 @@ class StoreService:
         district: str | None = None,
         latitude: float | None = None,
         longitude: float | None = None,
+        cover_image: str | None = None,
+        logo: str | None = None,
+        business_hours: str | None = None,
+        public_phone: str | None = None,
+        intro: str | None = None,
+        environment_images: list[str] | None = None,
+        service_guarantees: str | None = None,
+        appointment_notes: str | None = None,
         status: str = "active",
     ) -> Store:
         store = Store(
@@ -113,6 +121,14 @@ class StoreService:
             address=address.strip(),
             latitude=latitude,
             longitude=longitude,
+            cover_image=cover_image,
+            logo=logo,
+            business_hours=business_hours,
+            public_phone=public_phone,
+            intro=intro,
+            environment_images=environment_images or [],
+            service_guarantees=service_guarantees,
+            appointment_notes=appointment_notes,
             status=status,
         )
         self.session.add(store)
@@ -142,6 +158,14 @@ class StoreService:
             "address",
             "latitude",
             "longitude",
+            "cover_image",
+            "logo",
+            "business_hours",
+            "public_phone",
+            "intro",
+            "environment_images",
+            "service_guarantees",
+            "appointment_notes",
             "status",
         }
         values = {

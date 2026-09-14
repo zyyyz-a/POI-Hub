@@ -253,13 +253,18 @@ async def test_entry_is_blocked_until_binding_activated(client: AsyncClient) -> 
     entry = await client.get("/api/v1/public/platform/stores/store-draft")
     assert entry.status_code == 200, entry.text
     assert entry.json()["tradable"] is False
+    assert entry.json()["purchasable"] is False
     assert "门店入口未启用" in entry.json()["blockers"]
+    assert "准备中" in entry.json()["notice"]
 
-    blocked_login = await client.post(
+    browsable = await client.post(
         "/api/v1/public/platform/stores/store-draft/login", json={"code": "code-x"}
     )
-    assert blocked_login.status_code == 409
-    assert blocked_login.json()["detail"]["code"] == "store_not_tradable"
+    assert browsable.status_code == 200, browsable.text
+
+    drafts = await client.get("/api/v1/public/platform/stores/store-draft/products")
+    assert drafts.status_code == 200, drafts.text
+    assert [item["name"] for item in drafts.json()] == ["待上线套餐"]
 
     await _activate_binding(client, csrf, tenant_id, created.json(), "store-draft")
     ready = await client.get("/api/v1/public/platform/stores/store-draft")
