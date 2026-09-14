@@ -1,5 +1,5 @@
 {
-  "navigationBarTitleText": "门店",
+  "navigationBarTitleText": "附近到店惠",
   "enablePullDownRefresh": true,
   "usingComponents": {
     "page-state": "/components/page-state/index"
