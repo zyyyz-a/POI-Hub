@@ -1,4 +1,4 @@
-"""Typed gateway contracts for the two independent WeChat capabilities."""
+"""Typed gateway contracts for independent WeChat capabilities."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from typing import Any, Protocol
 class Capability(StrEnum):
     LOCAL_LIFE = "local_life"
     SERVICE_POI = "service_poi"
+    MINI_PROGRAM_COMMERCE = "mini_program_commerce"
 
 
 class ConnectionMode(StrEnum):

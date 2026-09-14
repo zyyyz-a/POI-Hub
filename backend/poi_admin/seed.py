@@ -15,6 +15,7 @@ from poi_admin.connections.models import WeChatConnection
 from poi_admin.connections.ports import Capability, ConnectionMode
 from poi_admin.core.config import Settings, get_settings
 from poi_admin.core.database import create_database
+from poi_admin.direct_commerce import models as _direct_commerce_models  # noqa: F401,E402
 from poi_admin.identity.models import Tenant, User
 from poi_admin.identity.service import ensure_test_identity
 from poi_admin.local_life.models import (
@@ -25,6 +26,7 @@ from poi_admin.local_life.models import (
     LocalVoucher,
     VoucherBill,
 )
+from poi_admin.onboarding import models as _onboarding_models  # noqa: F401,E402
 from poi_admin.operations import models as _operation_models  # noqa: F401,E402
 from poi_admin.stores.models import ServicePoi, Store, StorePoiMapping
 from poi_admin.webhooks import models as _webhook_models  # noqa: F401,E402
@@ -307,7 +309,9 @@ async def reset_and_seed(
                 )
                 await connection.execute(text("DELETE FROM alembic_version"))
                 await connection.execute(
-                    text("INSERT INTO alembic_version (version_num) VALUES ('0008_audit')")
+                    text(
+                        "INSERT INTO alembic_version (version_num) VALUES ('0012_direct_commerce')"
+                    )
                 )
         async with database.session_factory() as session:
             return await seed_demo(session)

@@ -1,0 +1,13 @@
+{
+  "description": "商家独立到店服务小程序",
+  "miniprogramRoot": "./",
+  "compileType": "miniprogram",
+  "appid": "请填写商家小程序AppID",
+  "projectname": "merchant-local-service",
+  "setting": {
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true
+  }
+}

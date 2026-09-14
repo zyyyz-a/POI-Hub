@@ -1,5 +1,5 @@
 import { App as AntApp, Avatar, Button, Layout, Space, Tag, Tooltip } from 'antd'
-import { LogoutOutlined, ShopOutlined, TeamOutlined, ApartmentOutlined, DashboardOutlined, LinkOutlined, GiftOutlined, ShoppingCartOutlined, SafetyCertificateOutlined, SwapOutlined, SyncOutlined, NotificationOutlined, ControlOutlined } from '@ant-design/icons'
+import { LogoutOutlined, ShopOutlined, TeamOutlined, ApartmentOutlined, DashboardOutlined, LinkOutlined, GiftOutlined, ShoppingCartOutlined, SafetyCertificateOutlined, SwapOutlined, SyncOutlined, NotificationOutlined, ControlOutlined, AppstoreOutlined } from '@ant-design/icons'
 import { Link, useLocation } from 'react-router-dom'
 import { useState, type ReactNode } from 'react'
 import { useAuth } from '../auth/AuthProvider'
@@ -14,6 +14,8 @@ const navigation: NavItem[] = [
   { key: '/platform/tenants', label: '商户主控', icon: <ControlOutlined />, roles: ['platform_admin'] },
   { key: '/dashboard', label: '运营总览', icon: <DashboardOutlined /> },
   { key: '/stores', label: '门店管理', icon: <ShopOutlined />, roles: ['platform_admin', 'tenant_admin', 'operator', 'auditor'] },
+  { key: '/onboarding', label: '准入与位置', icon: <SafetyCertificateOutlined />, roles: ['platform_admin', 'tenant_admin', 'operator', 'auditor'] },
+  { key: '/direct-commerce', label: '小程序交易', icon: <AppstoreOutlined />, roles: ['platform_admin', 'tenant_admin', 'operator', 'verifier', 'auditor'] },
   { key: '/pois', label: '服务 POI', icon: <ApartmentOutlined />, roles: ['platform_admin', 'tenant_admin', 'operator', 'auditor'] },
   { key: '/mappings', label: 'POI 映射', icon: <ApartmentOutlined />, roles: ['platform_admin', 'tenant_admin', 'operator', 'auditor'] },
   { key: '/products', label: '团购商品', icon: <GiftOutlined />, roles: ['platform_admin', 'tenant_admin', 'operator', 'auditor'] },

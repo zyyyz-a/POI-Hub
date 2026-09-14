@@ -1,0 +1,25 @@
+{
+  "pages": [
+    "pages/store/index",
+    "pages/product/index",
+    "pages/orders/index",
+    "pages/appointment/index",
+    "pages/voucher/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "到店服务",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f5f6f8"
+  },
+  "tabBar": {
+    "color": "#7b8190",
+    "selectedColor": "#111827",
+    "list": [
+      { "pagePath": "pages/store/index", "text": "首页" },
+      { "pagePath": "pages/orders/index", "text": "订单" }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

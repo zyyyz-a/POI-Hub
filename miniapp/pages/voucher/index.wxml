@@ -1,0 +1,1 @@
+<view class="page"><view class="card" style="text-align:center"><view class="muted">到店出示完整券码</view><view style="font-size:56rpx;font-weight:700;letter-spacing:6rpx;margin:30rpx 0">{{code}}</view><view class="muted">请勿将券码发给陌生人</view></view></view>

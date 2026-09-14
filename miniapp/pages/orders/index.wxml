@@ -1,0 +1,1 @@
+<view class="page"><view wx:if="{{order}}" class="card" bindtap="openVoucher"><view class="title">{{order.product_name}}</view><view class="muted">订单号 {{order.order_no}}</view><view>状态：{{order.status}}</view></view><view wx:else class="card muted">当前设备暂无订单记录</view></view>

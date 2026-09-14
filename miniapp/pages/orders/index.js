@@ -1,0 +1,1 @@
+Page({ data: { order: null }, onShow() { this.setData({ order: getApp().globalData.currentOrder }) }, openVoucher() { if (this.data.order) wx.navigateTo({ url: `/pages/voucher/index?orderId=${this.data.order.id}` }) } })

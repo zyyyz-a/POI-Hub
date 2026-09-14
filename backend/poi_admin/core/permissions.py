@@ -34,6 +34,9 @@ class Permission(StrEnum):
     MANAGE_OPERATIONS = "manage_operations"
     VIEW_AUDIT = "view_audit"
     VIEW_DASHBOARD = "view_dashboard"
+    VIEW_ONBOARDING = "view_onboarding"
+    MANAGE_ONBOARDING = "manage_onboarding"
+    RECORD_OFFICIAL_DECISIONS = "record_official_decisions"
 
 
 _TENANT_ADMIN_PERMISSIONS = frozenset(
@@ -57,6 +60,8 @@ _TENANT_ADMIN_PERMISSIONS = frozenset(
         Permission.MANAGE_OPERATIONS,
         Permission.VIEW_AUDIT,
         Permission.VIEW_DASHBOARD,
+        Permission.VIEW_ONBOARDING,
+        Permission.MANAGE_ONBOARDING,
     }
 )
 
@@ -78,6 +83,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.VIEW_OPERATIONS,
             Permission.MANAGE_OPERATIONS,
             Permission.VIEW_DASHBOARD,
+            Permission.VIEW_ONBOARDING,
+            Permission.MANAGE_ONBOARDING,
         }
     ),
     Role.VERIFIER: frozenset(
@@ -97,6 +104,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
             Permission.VIEW_PRODUCTS,
             Permission.VIEW_ORDERS,
             Permission.VIEW_DASHBOARD,
+            Permission.VIEW_ONBOARDING,
         }
     ),
 }

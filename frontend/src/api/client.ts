@@ -157,6 +157,129 @@ export interface AfterSaleRecord {
   amount?: number
 }
 
+export interface QualificationItem {
+  code: string
+  label: string
+  required: boolean
+  present: boolean
+  verified: boolean
+  evidence_reference?: string | null
+  note?: string | null
+}
+
+export interface OnboardingCaseRecord {
+  id: string
+  store_id: string
+  route: string
+  category_code: string
+  category_name: string
+  subject_type: string
+  region_code?: string | null
+  stage: string
+  status: string
+  requirements: QualificationItem[]
+  precheck_status: string
+  official_status: string
+  official_reference?: string | null
+  position_status: string
+  blocker_message?: string | null
+  next_action?: string | null
+  version: number
+}
+
+export interface MiniProgramRecord {
+  id: string
+  connection_id?: string | null
+  name: string
+  app_id?: string | null
+  owner_subject: string
+  ownership_mode: string
+  status: string
+  authorization_reference?: string | null
+  payment_merchant_id?: string | null
+  payment_owner_verified: boolean
+  video_channel_id?: string | null
+  location_service_status: string
+  callback_configured: boolean
+  version: number
+}
+
+export interface PositionServiceRecord {
+  id: string
+  onboarding_case_id: string
+  store_id: string
+  service_poi_id?: string | null
+  mini_program_id: string
+  service_type: string
+  service_name: string
+  entry_path: string
+  status: string
+  official_reference?: string | null
+  evidence_reference?: string | null
+  last_error?: string | null
+  version: number
+}
+
+export interface OnboardingReadiness {
+  case_id: string
+  ready: boolean
+  blockers: string[]
+  checks: Record<string, boolean>
+}
+
+export interface DirectProductRecord {
+  id: string
+  mini_program_id: string
+  store_id: string
+  merchant_product_id: string
+  name: string
+  description: string
+  cover_image?: string | null
+  sale_price: number
+  market_price: number
+  stock: number
+  sold_count: number
+  appointment_required: boolean
+  service_minutes: number
+  status: string
+  version: number
+}
+
+export interface DirectOrderRecord {
+  id: string
+  order_no: string
+  product_name: string
+  quantity: number
+  total_amount: number
+  paid_amount: number
+  status: string
+  created_at: string
+  paid_at?: string | null
+}
+
+export interface DirectAppointmentRecord {
+  id: string
+  order_id: string
+  store_id: string
+  starts_at: string
+  contact_name: string
+  contact_phone_masked: string
+  note?: string | null
+  status: string
+  version: number
+}
+
+export interface DirectVoucherRecord {
+  id: string
+  order_id: string
+  code_masked: string
+  state: string
+  valid_until: string
+  consume_store_id?: string | null
+  consumed_at?: string | null
+  version: number
+}
+
 export class ApiError extends Error {
   status: number
   code?: string
@@ -284,6 +407,26 @@ export const api = {
   retryWebhook: (eventId: string) => request<unknown>('/api/v1/webhook-events/' + eventId + '/retry', { method: 'POST', body: '{}' }),
   createConnection: (payload: Record<string, unknown>) => request<unknown>('/api/v1/connections', { method: 'POST', body: JSON.stringify(payload) }),
   inviteMember: (payload: Record<string, unknown>) => request<unknown>('/api/v1/members/invitations', { method: 'POST', body: JSON.stringify(payload) }),
+  onboardingCases: () => request<OnboardingCaseRecord[]>('/api/v1/onboarding/cases'),
+  createOnboardingCase: (payload: Record<string, unknown>) => request<OnboardingCaseRecord>('/api/v1/onboarding/cases', { method: 'POST', body: JSON.stringify(payload) }),
+  runOnboardingPrecheck: (caseId: string, payload: { items: QualificationItem[]; rule_source_reference: string }) => request<OnboardingCaseRecord>(`/api/v1/onboarding/cases/${caseId}/precheck`, { method: 'POST', body: JSON.stringify(payload) }),
+  recordOfficialSubmission: (caseId: string, payload: { official_reference: string; evidence_reference: string }) => request<OnboardingCaseRecord>(`/api/v1/onboarding/cases/${caseId}/official-submission`, { method: 'POST', body: JSON.stringify(payload) }),
+  recordOfficialDecision: (caseId: string, payload: { decision: string; evidence_reference: string; message?: string }) => request<OnboardingCaseRecord>(`/api/v1/onboarding/cases/${caseId}/official-decision`, { method: 'POST', body: JSON.stringify(payload) }),
+  onboardingReadiness: (caseId: string) => request<OnboardingReadiness>(`/api/v1/onboarding/cases/${caseId}/readiness`),
+  miniPrograms: () => request<MiniProgramRecord[]>('/api/v1/mini-programs'),
+  createMiniProgram: (payload: Record<string, unknown>) => request<MiniProgramRecord>('/api/v1/mini-programs', { method: 'POST', body: JSON.stringify(payload) }),
+  updateMiniProgram: (miniProgramId: string, payload: Record<string, unknown>) => request<MiniProgramRecord>(`/api/v1/mini-programs/${miniProgramId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  positionServices: () => request<PositionServiceRecord[]>('/api/v1/position-services'),
+  createPositionService: (payload: Record<string, unknown>) => request<PositionServiceRecord>('/api/v1/position-services', { method: 'POST', body: JSON.stringify(payload) }),
+  transitionPositionService: (mountId: string, payload: Record<string, unknown>) => request<PositionServiceRecord>(`/api/v1/position-services/${mountId}/transition`, { method: 'POST', body: JSON.stringify(payload) }),
+  directProducts: () => request<DirectProductRecord[]>('/api/v1/direct-commerce/products'),
+  createDirectProduct: (payload: Record<string, unknown>) => request<DirectProductRecord>('/api/v1/direct-commerce/products', { method: 'POST', body: JSON.stringify(payload) }),
+  updateDirectProduct: (productId: string, payload: Record<string, unknown>) => request<DirectProductRecord>(`/api/v1/direct-commerce/products/${productId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  directOrders: () => request<DirectOrderRecord[]>('/api/v1/direct-commerce/orders'),
+  directAppointments: () => request<DirectAppointmentRecord[]>('/api/v1/direct-commerce/appointments'),
+  directVouchers: () => request<DirectVoucherRecord[]>('/api/v1/direct-commerce/vouchers'),
+  consumeDirectVoucher: (payload: { code: string; store_id: string }) => request<DirectVoucherRecord>('/api/v1/direct-commerce/vouchers/consume', { method: 'POST', body: JSON.stringify(payload) }),
+  revokeDirectVoucher: (voucherId: string, payload: { version: number; reason: string }) => request<DirectVoucherRecord>(`/api/v1/direct-commerce/vouchers/${voucherId}/revoke`, { method: 'POST', body: JSON.stringify(payload) }),
 }
 
 export function dashboardValues(payload: DashboardSummary | { summary: DashboardSummary }): DashboardSummary {

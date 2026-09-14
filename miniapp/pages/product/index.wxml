@@ -1,0 +1,1 @@
+<view class="page" wx:if="{{product}}"><view class="card"><view class="title">{{product.name}}</view><view class="muted">{{product.description}}</view><view class="price">¥{{product.sale_price / 100}}</view><button class="button" loading="{{paying}}" bindtap="buy">立即购买</button></view></view>

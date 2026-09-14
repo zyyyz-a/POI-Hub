@@ -10,6 +10,9 @@ __pycache__/
 .env.*
 !.env.example
 .data/
+miniapp/config.js
+miniapp/project.config.json
+miniapp/private.config.json
 
 # Python test, type-check, and lint caches
 .pytest_cache/

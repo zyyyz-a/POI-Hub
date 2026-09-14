@@ -156,7 +156,9 @@ class ConnectionService:
         if connection.mode == ConnectionMode.MOCK.value:
             if connection.capability == Capability.LOCAL_LIFE.value:
                 return MockLocalLifeGateway(tenant_id, scenario=connection.mock_scenario)
-            return MockServicePoiGateway(tenant_id, scenario=connection.mock_scenario)
+            if connection.capability == Capability.SERVICE_POI.value:
+                return MockServicePoiGateway(tenant_id, scenario=connection.mock_scenario)
+            raise GatewayTerminalError("该连接由独立小程序交易模块使用", code="unsupported_gateway")
         if not connection.encrypted_secrets:
             raise GatewayTerminalError("真实微信连接凭据尚未配置", code="credentials_missing")
         from .local_life_live import LiveLocalLifeGateway
@@ -174,9 +176,7 @@ class ConnectionService:
             http_client=self.http_client,
         )
         if connection.capability == Capability.LOCAL_LIFE.value:
-            return LiveLocalLifeGateway(
-                provider, base_url=base_url, http_client=self.http_client
-            )
+            return LiveLocalLifeGateway(provider, base_url=base_url, http_client=self.http_client)
         if connection.capability == Capability.SERVICE_POI.value:
             try:
                 district_id = int(secrets.get("district_id", 0))

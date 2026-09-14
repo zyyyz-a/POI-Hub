@@ -1,0 +1,8 @@
+page { background: #f5f6f8; color: #172033; font-size: 28rpx; }
+.page { padding: 28rpx; }
+.card { background: #fff; border-radius: 24rpx; padding: 28rpx; margin-bottom: 20rpx; }
+.title { font-size: 38rpx; font-weight: 700; }
+.muted { color: #7b8190; }
+.price { color: #e5484d; font-size: 38rpx; font-weight: 700; }
+.button { margin-top: 24rpx; background: #111827; color: #fff; border-radius: 999rpx; }
+input, textarea { background: #fff; border: 1rpx solid #e5e7eb; border-radius: 14rpx; padding: 20rpx; margin: 14rpx 0; }

@@ -19,6 +19,8 @@ import { WebhooksPage } from './pages/WebhooksPage'
 import { AuditPage } from './pages/AuditPage'
 import { MembersPage } from './pages/MembersPage'
 import { TenantsPage } from './pages/TenantsPage'
+import { OnboardingPage } from './pages/OnboardingPage'
+import { DirectCommercePage } from './pages/DirectCommercePage'
 import './styles.css'
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 1 } } })
@@ -38,6 +40,8 @@ function Protected() {
     <Route path="/platform/tenants" element={<TenantsPage />} />
     <Route path="/dashboard" element={<DashboardPage />} />
     <Route path="/stores" element={<StoresPage />} />
+    <Route path="/onboarding" element={<OnboardingPage />} />
+    <Route path="/direct-commerce" element={<DirectCommercePage />} />
     <Route path="/products" element={<ProductsPage />} />
     <Route path="/orders" element={<OrdersPage />} />
     <Route path="/accounting" element={<AccountingPage />} />
