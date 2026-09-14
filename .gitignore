@@ -13,6 +13,7 @@ __pycache__/
 miniapp/config.js
 miniapp/project.config.json
 miniapp/private.config.json
+miniapp/project.private.config.json
 
 # Python test, type-check, and lint caches
 .pytest_cache/
