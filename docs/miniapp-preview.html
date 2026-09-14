@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>统一平台顾客小程序 · 页面预览</title>
+<style>
+  :root {
+    --bg: #F6F7F9; --card: #FFFFFF; --text: #171A1F; --sub: #6B7280;
+    --line: #EAECF0; --primary: #1677FF; --success: #16A34A;
+    --warn: #D97706; --danger: #DC2626;
+  }
+  * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+  body {
+    margin: 0; padding: 32px 24px 64px; background: #E9ECF1;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    color: var(--text);
+  }
+  header.board-head { max-width: 1320px; margin: 0 auto 28px; }
+  header.board-head h1 { font-size: 22px; margin: 0 0 6px; }
+  header.board-head p { margin: 0; color: #4B5563; font-size: 14px; }
+  .board { display: flex; flex-wrap: wrap; gap: 28px; max-width: 1320px; margin: 0 auto; }
+  .phone-wrap { width: 344px; }
+  .phone-label { font-size: 13px; color: #4B5563; margin: 0 0 8px 6px; font-weight: 600; }
+  .phone {
+    width: 344px; height: 700px; background: #10131A; border-radius: 42px;
+    padding: 10px; box-shadow: 0 18px 40px rgba(15,23,42,.22);
+  }
+  .screen {
+    width: 100%; height: 100%; background: var(--bg); border-radius: 34px;
+    overflow: hidden; display: flex; flex-direction: column; position: relative;
+  }
+  .statusbar {
+    height: 30px; flex: 0 0 30px; display: flex; align-items: center;
+    justify-content: space-between; padding: 0 20px; font-size: 12px;
+    color: #111827; background: #fff;
+  }
+  .statusbar .dots { letter-spacing: 2px; color: #111827; }
+  .navbar {
+    height: 44px; flex: 0 0 44px; background: #fff; display: flex;
+    align-items: center; justify-content: center; font-size: 16px; font-weight: 600;
+    border-bottom: 1px solid var(--line); position: relative;
+  }
+  .navbar .back { position: absolute; left: 14px; color: #374151; font-size: 18px; }
+  .content { flex: 1; overflow: hidden; padding: 12px 12px 0; position: relative; }
+  .scroll-hint { position: absolute; inset: 0; pointer-events: none; }
+  .tabbar {
+    height: 52px; flex: 0 0 52px; background: #fff; border-top: 1px solid var(--line);
+    display: flex; align-items: center;
+  }
+  .tabbar .tab { flex: 1; text-align: center; font-size: 12px; color: var(--sub); }
+  .tabbar .tab.active { color: var(--primary); font-weight: 600; }
+  .tabbar .tab i { display: block; font-size: 17px; font-style: normal; margin-bottom: 2px; }
+
+  .card { background: var(--card); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+  .title { font-size: 17px; font-weight: 600; }
+  .subtitle { font-size: 15px; font-weight: 500; }
+  .muted { color: var(--sub); font-size: 12px; line-height: 1.6; }
+  .row { display: flex; align-items: center; }
+  .row-between { display: flex; align-items: center; justify-content: space-between; }
+  .grow { flex: 1; min-width: 0; }
+  .divider { height: 1px; background: var(--line); margin: 10px 0; }
+  .price { font-size: 20px; font-weight: 700; }
+  .price .sym { font-size: 14px; font-weight: 600; }
+  .strike { color: #9CA3AF; font-size: 12px; text-decoration: line-through; margin-left: 6px; }
+  .tag { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 11px; line-height: 1.7; }
+  .tag-success { background: #E8F7EE; color: var(--success); }
+  .tag-warn { background: #FEF3E2; color: var(--warn); }
+  .tag-muted { background: #F3F4F6; color: #9CA3AF; }
+  .tag-danger { background: #FDE8E8; color: var(--danger); }
+
+  .op-row { display: flex; gap: 8px; margin-top: 10px; }
+  .op {
+    padding: 5px 14px; border: 1px solid var(--line); border-radius: 999px;
+    font-size: 12px; color: #374151; background: #fff;
+  }
+  .btn { height: 44px; line-height: 44px; border-radius: 9px; text-align: center; font-size: 15px; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-ghost { background: #fff; color: var(--text); border: 1px solid var(--line); }
+  .bottom-bar {
+    position: absolute; left: 0; right: 0; bottom: 0; background: #fff;
+    border-top: 1px solid var(--line); padding: 10px 14px 14px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .section-title { font-size: 14px; font-weight: 600; margin: 4px 0 8px; }
+  .bullet { display: flex; font-size: 13px; color: #374151; margin-bottom: 6px; }
+  .bullet b { color: var(--primary); margin-right: 7px; font-weight: 700; }
+  .thumb {
+    width: 92px; height: 92px; border-radius: 12px; margin-right: 12px; flex: 0 0 auto;
+    background: linear-gradient(135deg, #DBEAFE, #BFDBFE);
+    display: flex; align-items: center; justify-content: center; color: #3B82F6; font-size: 26px;
+  }
+  .cover {
+    width: 100%; height: 150px; border-radius: 14px; margin-bottom: 12px;
+    background: linear-gradient(135deg, #C7DBFF, #E0E7FF);
+    display: flex; align-items: center; justify-content: center; color: #4F46E5; font-size: 40px;
+  }
+  .hero { background: #fff; border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+  .filter-bar { display: flex; gap: 8px; margin-bottom: 12px; }
+  .filter {
+    padding: 5px 14px; border-radius: 999px; background: #F3F4F6;
+    color: var(--sub); font-size: 12px;
+  }
+  .filter.active { background: #E8F1FF; color: var(--primary); font-weight: 600; }
+  .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    padding: 8px 15px; border-radius: 999px; background: #F3F4F6;
+    color: #374151; font-size: 13px;
+  }
+  .chip.active { background: #E8F1FF; color: var(--primary); font-weight: 600; }
+  .field { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .field:last-child { border-bottom: none; }
+  .field .lbl { color: var(--sub); font-size: 13px; }
+  .code-box {
+    background: #F8FAFF; border: 2px dashed #A9C9FF; border-radius: 12px;
+    padding: 20px; text-align: center;
+  }
+  .code-text { font-size: 26px; font-weight: 700; letter-spacing: 4px; color: var(--primary); }
+  .center { text-align: center; }
+  .cashier { padding: 34px 20px 20px; text-align: center; }
+  .cashier .icon {
+    width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; font-size: 34px; margin: 0 auto 14px;
+  }
+  .icon.success { background: #E8F7EE; color: var(--success); }
+  .icon.pending { background: #E8F1FF; color: var(--primary); }
+  .cashier h3 { margin: 0 0 6px; font-size: 18px; }
+  .profile-item {
+    display: flex; justify-content: space-between; padding: 14px 0;
+    border-bottom: 1px solid var(--line); font-size: 14px;
+  }
+  .profile-item:last-child { border-bottom: none; }
+  .profile-item .arrow { color: #9CA3AF; }
+  .checkbox-row { display: flex; align-items: center; gap: 7px; margin-top: 10px; font-size: 12px; color: var(--sub); }
+  .checkbox { width: 15px; height: 15px; border-radius: 4px; background: var(--primary); color: #fff; font-size: 11px; display: flex; align-items: center; justify-content: center; }
+</style>
+</head>
+<body>
+<header class="board-head">
+  <h1>统一平台顾客小程序 · 页面预览</h1>
+  <p>一个平台 AppID 服务多家门店；入口按 <code>store_code</code> 直达门店，收款方由服务端决定。以下为与 <code>miniapp/</code> 页面一致的静态预览。</p>
+</header>
+
+<div class="board">
+
+  <!-- 门店首页 -->
+  <div class="phone-wrap">
+    <div class="phone-label">1. 门店首页（tab）</div>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span>9:41</span><span class="dots">●●●</span></div>
+      <div class="navbar">门店</div>
+      <div class="content">
+        <div class="hero">
+          <div class="title">缔丝风尚潮色染烫</div>
+          <div class="muted" style="margin-top:6px">河南省漯河市源汇区乐山路长江国际小区116门面房</div>
+          <div class="op-row"><span class="op">导航</span><span class="op">电话</span></div>
+        </div>
+        <div class="section-title">本店套餐</div>
+        <div class="card">
+          <div class="row">
+            <div class="thumb">✂</div>
+            <div class="grow">
+              <div class="subtitle">潮色染发体验</div>
+              <div class="muted">到店使用 · 需提前预约</div>
+              <div class="row-between" style="margin-top:8px">
+                <div class="price"><span class="sym">¥</span>99</div>
+                <div class="muted">已售 12</div>
+              </div>
+              <div class="muted">剩余 10 份</div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="row">
+            <div class="thumb">💇</div>
+            <div class="grow">
+              <div class="subtitle">洗剪吹造型</div>
+              <div class="muted">到店即用</div>
+              <div class="row-between" style="margin-top:8px">
+                <div class="price"><span class="sym">¥</span>59</div>
+                <div class="muted">已售 30</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card muted">服务保障：真实门店 · 到店核销 · 未使用可申请退款</div>
+      </div>
+      <div class="tabbar"><div class="tab active"><i>🏠</i>首页</div><div class="tab"><i>🧾</i>订单</div><div class="tab"><i>👤</i>我的</div></div>
+    </div></div>
+  </div>
+
+  <!-- 套餐详情 -->
+  <div class="phone-wrap">
+    <div class="phone-label">2. 套餐详情</div>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span>9:41</span><span class="dots">●●●</span></div>
+      <div class="navbar"><span class="back">‹</span>套餐详情</div>
+      <div class="content" style="padding-bottom:0">
+        <div class="cover">✂</div>
+        <div class="card">
+          <div class="title">潮色染发体验</div>
+          <div class="row" style="margin-top:8px;align-items:baseline">
+            <div class="price"><span class="sym">¥</span>99</div><div class="strike">¥168</div>
+            <div class="muted" style="margin-left:8px">已售 12</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="section-title">套餐内容</div>
+          <div class="muted">基础染发一次、洗护和造型，以门店实际服务为准。</div>
+        </div>
+        <div class="card">
+          <div class="section-title">预约与使用规则</div>
+          <div class="bullet"><b>·</b>需提前预约后到店使用</div>
+          <div class="bullet"><b>·</b>预计服务时长约 120 分钟</div>
+          <div class="bullet"><b>·</b>长发、漂色或指定发型师可能补差</div>
+          <div class="bullet"><b>·</b>剩余 10 份</div>
+        </div>
+        <div class="bottom-bar">
+          <div class="price"><span class="sym">¥</span>99</div>
+          <div class="btn btn-primary" style="padding:0 28px">立即购买</div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- 确认订单 -->
+  <div class="phone-wrap">
+    <div class="phone-label">3. 确认订单</div>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span>9:41</span><span class="dots">●●●</span></div>
+      <div class="navbar"><span class="back">‹</span>确认订单</div>
+      <div class="content">
+        <div class="card"><div class="subtitle">缔丝风尚潮色染烫</div><div class="muted">河南省漯河市源汇区乐山路…</div></div>
+        <div class="card">
+          <div class="row">
+            <div class="thumb">✂</div>
+            <div class="grow">
+              <div class="subtitle">潮色染发体验</div>
+              <div class="row-between" style="margin-top:8px"><div class="price"><span class="sym">¥</span>99</div><div class="muted">x1</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="row-between"><span class="muted">商品金额</span><span>¥99.00</span></div>
+          <div class="row-between" style="margin-top:8px"><span class="muted">优惠</span><span>¥0.00</span></div>
+          <div class="divider"></div>
+          <div class="row-between"><span class="subtitle">应付总额</span><span class="price"><span class="sym">¥</span>99</span></div>
+        </div>
+        <div class="card">
+          <div class="checkbox-row"><span class="checkbox">✓</span>我已阅读并同意《退款规则》和《用户协议》</div>
+        </div>
+        <div class="bottom-bar">
+          <div class="price"><span class="sym">¥</span>99</div>
+          <div class="btn btn-primary" style="padding:0 28px">微信支付</div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- 支付结果 -->
+  <div class="phone-wrap">
+    <div class="phone-label">4. 支付结果</div>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span>9:41</span><span class="dots">●●●</span></div>
+      <div class="navbar"><span class="back">‹</span>支付结果</div>
+      <div class="content">
+        <div class="cashier">
+          <div class="icon success">✓</div>
+          <h3>支付成功</h3>
+          <div class="muted">订单正在确认，可前往预约或查看券码</div>
+        </div>
+        <div class="card">
+          <div class="row-between"><span class="muted">订单号</span><span>PF2026091412345678</span></div>
+          <div class="row-between" style="margin-top:8px"><span class="muted">商品</span><span>潮色染发体验</span></div>
+          <div class="row-between" style="margin-top:8px"><span class="muted">金额</span><span class="price"><span class="sym">¥</span>99</span></div>
+        </div>
+        <div class="card">
+          <div class="btn btn-primary">立即预约</div>
+          <div class="btn btn-ghost" style="margin-top:10px">查看券码</div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- 订单列表 -->
+  <div class="phone-wrap">
+    <div class="phone-label">5. 订单列表（tab）</div>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span>9:41</span><span class="dots">●●●</span></div>
+      <div class="navbar">订单</div>
+      <div class="content">
+        <div class="filter-bar">
+          <span class="filter active">全部</span><span class="filter">待付款</span>
+          <span class="filter">待使用</span><span class="filter">已完成/退款</span>
+        </div>
+        <div class="card">
+          <div class="row-between"><span class="subtitle">潮色染发体验</span><span class="tag tag-success">待使用</span></div>
+          <div class="muted" style="margin-top:4px">订单号 PF2026091412345678</div>
+          <div class="row-between" style="margin-top:8px"><span class="muted">9月14日 12:30</span><span class="price"><span class="sym">¥</span>99</span></div>
+          <div class="op-row"><span class="op">查看券码</span><span class="op">查看详情</span></div>
+        </div>
+        <div class="card">
+          <div class="row-between"><span class="subtitle">洗剪吹造型</span><span class="tag tag-warn">待付款</span></div>
+          <div class="muted" style="margin-top:4px">订单号 PF2026091412330001</div>
+          <div class="row-between" style="margin-top:8px"><span class="muted">9月14日 12:20</span><span class="price"><span class="sym">¥</span>59</span></div>
+          <div class="op-row"><span class="op">查看详情</span></div>
+        </div>
+      </div>
+      <div class="tabbar"><div class="tab"><i>🏠</i>首页</div><div class="tab active"><i>🧾</i>订单</div><div class="tab"><i>👤</i>我的</div></div>
+    </div></div>
+  </div>
+
+  <!-- 券码 -->
+  <div class="phone-wrap">
+    <div class="phone-label">6. 券码详情</div>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span>9:41</span><span class="dots">●●●</span></div>
+      <div class="navbar"><span class="back">‹</span>我的券码</div>
+      <div class="content">
+        <div class="card code-box">
+          <div class="code-text">482913 005612</div>
+          <div class="muted" style="margin-top:10px">点击复制券码</div>
+        </div>
+        <div class="card">
+          <div class="row-between"><span class="subtitle">4829****5612</span><span class="tag tag-success">待使用</span></div>
+          <div class="row-between" style="margin-top:8px"><span class="muted">门店</span><span>缔丝风尚潮色染烫</span></div>
+          <div class="row-between" style="margin-top:6px"><span class="muted">有效期至</span><span>2027年9月14日 12:30</span></div>
+        </div>
+        <div class="card muted">到店后请向店员出示券码，由店员在后台核销。券码只能使用一次，退款中的券码不可使用。</div>
+        <div class="btn btn-ghost">返回订单</div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- 预约 -->
+  <div class="phone-wrap">
+    <div class="phone-label">7. 预约到店</div>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span>9:41</span><span class="dots">●●●</span></div>
+      <div class="navbar"><span class="back">‹</span>预约到店</div>
+      <div class="content">
+        <div class="card">
+          <div class="section-title">选择日期</div>
+          <div class="chip-row"><span class="chip active">今天</span><span class="chip">明天</span><span class="chip">9月16日</span><span class="chip">9月17日</span></div>
+        </div>
+        <div class="card">
+          <div class="section-title">选择时段</div>
+          <div class="chip-row"><span class="chip">09:00</span><span class="chip">10:00</span><span class="chip active">14:00</span><span class="chip">15:00</span><span class="chip">16:00</span><span class="chip">18:00</span></div>
+        </div>
+        <div class="card">
+          <div class="section-title">联系人信息</div>
+          <div class="field"><span class="lbl">联系人</span><span>张女士</span></div>
+          <div class="field"><span class="lbl">手机号</span><span>139****0000</span></div>
+          <div class="field"><span class="lbl">备注</span><span class="muted">选填</span></div>
+        </div>
+        <div class="bottom-bar"><div class="btn btn-primary" style="flex:1">确认预约</div></div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- 退款申请 -->
+  <div class="phone-wrap">
+    <div class="phone-label">8. 申请退款</div>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span>9:41</span><span class="dots">●●●</span></div>
+      <div class="navbar"><span class="back">‹</span>申请退款</div>
+      <div class="content">
+        <div class="card">
+          <div class="row-between"><span class="subtitle">潮色染发体验</span><span class="tag tag-success">待使用</span></div>
+          <div class="row-between" style="margin-top:8px"><span class="muted">可退金额</span><span class="price"><span class="sym">¥</span>99</span></div>
+        </div>
+        <div class="card">
+          <div class="section-title">退款原因</div>
+          <div style="background:#F9FAFB;border-radius:10px;padding:12px;font-size:13px;color:#9CA3AF;min-height:60px">请简要说明退款原因（选填）</div>
+        </div>
+        <div class="card">
+          <div class="section-title">退款规则</div>
+          <div class="bullet"><b>·</b>未核销且未过期的订单可申请退款</div>
+          <div class="bullet"><b>·</b>提交后由门店确认，退款原路返回</div>
+          <div class="bullet"><b>·</b>退款处理期间券码暂停使用</div>
+        </div>
+        <div class="bottom-bar"><div class="btn btn-primary" style="flex:1">提交退款申请</div></div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- 我的 -->
+  <div class="phone-wrap">
+    <div class="phone-label">9. 我的（tab）</div>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span>9:41</span><span class="dots">●●●</span></div>
+      <div class="navbar">我的</div>
+      <div class="content">
+        <div class="hero"><div class="title">到店服务</div><div class="muted" style="margin-top:6px">购买套餐、预约到店、出示券码核销</div></div>
+        <div class="card">
+          <div class="profile-item"><span>我的订单</span><span class="arrow">›</span></div>
+          <div class="profile-item"><span>联系客服</span><span class="arrow">›</span></div>
+          <div class="profile-item"><span>用户协议</span><span class="arrow">›</span></div>
+          <div class="profile-item"><span>隐私政策</span><span class="arrow">›</span></div>
+          <div class="profile-item"><span>账号注销 / 个人信息处理</span><span class="arrow">›</span></div>
+        </div>
+        <div class="muted center">当前版本 1.0.0</div>
+      </div>
+      <div class="tabbar"><div class="tab"><i>🏠</i>首页</div><div class="tab"><i>🧾</i>订单</div><div class="tab active"><i>👤</i>我的</div></div>
+    </div></div>
+  </div>
+
+  <!-- 入口失效 -->
+  <div class="phone-wrap">
+    <div class="phone-label">10. 门店不可用 / 入口失效</div>
+    <div class="phone"><div class="screen">
+      <div class="statusbar"><span>9:41</span><span class="dots">●●●</span></div>
+      <div class="navbar">门店</div>
+      <div class="content">
+        <div class="card" style="text-align:center;padding:34px 18px">
+          <div class="title">门店暂时无法打开</div>
+          <div class="muted" style="margin-top:10px">入口可能已失效或门店正在维护，请稍后再试。</div>
+        </div>
+        <div class="card">
+          <div class="btn btn-primary">重新加载</div>
+          <div class="btn btn-ghost" style="margin-top:10px">联系客服</div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+</div>
+</body>
+</html>

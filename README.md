@@ -36,10 +36,15 @@
 - 订单、券码脱敏、映射门店核销、撤销、售后、资金流水和券账单对账。
 - Mock 与 HTTP live gateway、token 刷新锁、重试分类、durable operation worker。
 - 微信回调签名/AES 解密、AppID 校验、大小限制、指纹去重和回调收件箱。
+- 统一平台小程序：平台 AppID＋门店入口绑定（`store_code`）、逐门店支付路由、退款与主动查单、微信支付账单对账。
+- SaaS 服务费：套餐、订阅、用量计费、账单、人工收款、减免冲正和欠费停用。
 - 审计日志、dashboard 聚合、确定性 seed/reset。
 
 ## 官方文档
 
+- 生产部署清单: [docs/production-deployment-checklist.md](docs/production-deployment-checklist.md)
+- 中心化部署指南: [docs/deployment.md](docs/deployment.md)
+- 统一平台小程序交接方案: [docs/unified-platform-miniapp-handoff.md](docs/unified-platform-miniapp-handoff.md)
 - 本地生活接入指南: https://developers.weixin.qq.com/doc/channels/dev_before/locallife/guide.html
 - 本地生活 API: https://developers.weixin.qq.com/doc/channels/api/locallife/
 - 新增本地生活商品: https://developers.weixin.qq.com/doc/channels/api/locallife/shop/api_addlocalproduct.html
