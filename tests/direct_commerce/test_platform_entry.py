@@ -272,6 +272,33 @@ async def test_entry_is_blocked_until_binding_activated(client: AsyncClient) -> 
 
 
 @pytest.mark.asyncio
+async def test_public_store_list_exposes_only_public_entry_fields(client: AsyncClient) -> None:
+    csrf, tenant_id = await login(client)
+    store = await _tenant_store_with_product(
+        client, csrf, tenant_id, product_name="门店列表套餐", product_code="LIST-001"
+    )
+    program_id = await _platform_program(client, csrf, store["connection_id"])
+    binding = await _create_binding(
+        client, csrf, tenant_id, program_id, store["store_id"], "disifengshang"
+    )
+    await _activate_binding(client, csrf, tenant_id, binding, "disifengshang")
+    await _active_payment_profile(
+        client, csrf, tenant_id, store["store_id"], store["connection_id"]
+    )
+
+    response = await client.get("/api/v1/public/platform/stores")
+    assert response.status_code == 200, response.text
+    items = response.json()["items"]
+    entry = next(item for item in items if item["store_code"] == "disifengshang")
+    assert entry["store_name"]
+    assert entry["business_status"] in {"open", "preparing", "closed"}
+    assert entry["discoverable"] is True
+    assert entry["tradable"] is True
+    assert "tenant_id" not in entry
+    assert "payment_profile" not in entry
+
+
+@pytest.mark.asyncio
 async def test_payment_route_rejects_mismatched_merchant(client: AsyncClient) -> None:
     csrf, tenant_id = await login(client)
     headers = {"X-CSRF-Token": csrf, "X-Tenant-ID": tenant_id}

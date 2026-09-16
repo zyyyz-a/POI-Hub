@@ -80,6 +80,7 @@ class MiniProgramStoreBinding(Base):
     entry_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     entry_scene: Mapped[str | None] = mapped_column(String(200), nullable=True)
     status: Mapped[str] = mapped_column(String(40), nullable=False, default="draft")
+    discoverable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     official_reference: Mapped[str | None] = mapped_column(String(200), nullable=True)
     evidence_reference: Mapped[str | None] = mapped_column(String(500), nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)

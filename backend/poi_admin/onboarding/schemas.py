@@ -229,6 +229,7 @@ class StoreBindingCreate(BaseModel):
     tencent_poi_id: str | None = Field(default=None, max_length=160)
     entry_path: str | None = Field(default=None, max_length=500)
     entry_scene: str | None = Field(default=None, max_length=200)
+    discoverable: bool = True
 
 
 class StoreBindingUpdate(BaseModel):
@@ -236,6 +237,7 @@ class StoreBindingUpdate(BaseModel):
     entry_path: str | None = Field(default=None, max_length=500)
     entry_scene: str | None = Field(default=None, max_length=200)
     status: Literal["draft", "active", "suspended"] | None = None
+    discoverable: bool | None = None
     official_reference: str | None = Field(default=None, max_length=200)
     evidence_reference: str | None = Field(default=None, max_length=500)
     version: int = Field(ge=1)
@@ -253,6 +255,7 @@ class StoreBindingResponse(BaseModel):
     entry_path: str | None
     entry_scene: str | None
     status: str
+    discoverable: bool
     official_reference: str | None
     evidence_reference: str | None
     version: int

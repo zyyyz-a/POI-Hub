@@ -75,6 +75,10 @@ export function PlatformMiniappPage() {
     mutationFn: (values: Record<string, unknown>) => api.updateStoreBinding(activateBinding!.id, { ...values, status: 'active', version: activateBinding!.version }),
     onSuccess: async () => { setActivateBinding(null); activateForm.resetFields(); await refresh() },
   })
+  const toggleDiscoverable = useMutation({
+    mutationFn: (row: StoreBindingRecord) => api.updateStoreBinding(row.id, { version: row.version, discoverable: !row.discoverable }),
+    onSuccess: refresh,
+  })
   const saveProfile = useMutation({
     mutationFn: (values: Record<string, unknown>) => profileModal?.row
       ? api.updatePaymentProfile(profileModal.row.id, { ...values, version: profileModal.row.version })
@@ -103,6 +107,10 @@ export function PlatformMiniappPage() {
     { title: '平台小程序', dataIndex: 'platform_mini_program_id', render: (value: string) => programNames.get(value) || value },
     { title: '腾讯 POI', dataIndex: 'tencent_poi_id', render: (value?: string) => value || '-' },
     { title: '状态', dataIndex: 'status', render: (value: string) => <StatusTag value={value} /> },
+    { title: '门店展示', dataIndex: 'discoverable', render: (value: boolean, row: StoreBindingRecord) => <Space>
+      <Tag color={value ? 'green' : 'default'}>{value ? '顾客可见' : '仅内部'}</Tag>
+      <Button size="small" onClick={() => toggleDiscoverable.mutate(row)}>{value ? '隐藏' : '上架'}</Button>
+    </Space> },
     { title: '命中路径', render: (_: unknown, row: StoreBindingRecord) => row.entry_path || `pages/store/index?store_code=${row.store_code}` },
     { title: '操作', render: (_: unknown, row: StoreBindingRecord) => row.status === 'active' ? <Tag color="green">已启用</Tag> : <Button size="small" type="primary" onClick={() => { setActivateBinding(row); activateForm.setFieldsValue({ tencent_poi_id: row.tencent_poi_id }) }}>依据官方凭证启用</Button> },
   ]
@@ -166,13 +174,14 @@ export function PlatformMiniappPage() {
       {saveProgram.isError && <p className="form-error">{saveProgram.error.message}</p>}<Button block type="primary" htmlType="submit" loading={saveProgram.isPending}>保存</Button>
     </Form></Modal>
 
-    <Modal title="绑定门店入口" open={bindingModal} onCancel={() => setBindingModal(false)} footer={null}><Form form={bindingForm} layout="vertical" initialValues={{ entry_path: 'pages/store/index' }} onFinish={values => createBinding.mutate(values)}>
+    <Modal title="绑定门店入口" open={bindingModal} onCancel={() => setBindingModal(false)} footer={null}><Form form={bindingForm} layout="vertical" initialValues={{ entry_path: 'pages/store/index', discoverable: true }} onFinish={values => createBinding.mutate(values)}>
       <Form.Item name="platform_mini_program_id" label="平台小程序" rules={[{ required: true }]}><Select options={(programs.data || []).map(item => ({ value: item.id, label: `${item.name} · ${item.app_id || '待注册'}` }))} /></Form.Item>
       <Form.Item name="store_id" label="门店" rules={[{ required: true }]}><Select options={(stores.data || []).map(item => ({ value: item.id, label: item.name }))} /></Form.Item>
       <Form.Item name="store_code" label="公开入口编码 store_code" rules={[{ required: true }]}><Input placeholder="字母、数字、下划线或短横线" /></Form.Item>
       <Form.Item name="tencent_poi_id" label="腾讯地图 POI 标识"><Input /></Form.Item>
       <Form.Item name="entry_path" label="小程序入口路径"><Input /></Form.Item>
       <Form.Item name="entry_scene" label="入口 scene"><Input /></Form.Item>
+      <Form.Item name="discoverable" valuePropName="checked"><Checkbox>在顾客门店列表中展示</Checkbox></Form.Item>
       {createBinding.isError && <p className="form-error">{createBinding.error.message}</p>}<Button block type="primary" htmlType="submit" loading={createBinding.isPending}>创建草稿</Button>
     </Form></Modal>
 

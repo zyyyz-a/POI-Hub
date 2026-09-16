@@ -36,6 +36,8 @@ from .schemas import (
     PaymentProfileUpdate,
     PaymentRequest,
     PaymentResponse,
+    PublicStoreListResponse,
+    PublicStoreSummary,
     ReconciliationBatchResponse,
     ReconciliationImport,
     ReconciliationItemResponse,
@@ -662,6 +664,38 @@ async def create_appointment(
     except DirectCommerceError as error:
         _raise(error)
     return AppointmentResponse.model_validate(row)
+
+
+@platform_router.get("/stores", response_model=PublicStoreListResponse)
+async def platform_list_public_stores(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PublicStoreListResponse:
+    entries = await _platform_service(request, session).list_public_stores()
+    items: list[PublicStoreSummary] = []
+    for entry, blockers in entries:
+        store = entry.store
+        if store.status != "active":
+            business_status = "closed"
+        elif blockers:
+            business_status = "preparing"
+        else:
+            business_status = "open"
+        items.append(
+            PublicStoreSummary(
+                store_code=entry.binding.store_code,
+                store_name=store.name,
+                city=store.city,
+                district=store.district,
+                address=store.address,
+                cover_image=store.cover_image,
+                logo=store.logo,
+                business_status=business_status,
+                discoverable=entry.binding.discoverable,
+                tradable=not blockers,
+            )
+        )
+    return PublicStoreListResponse(items=items)
 
 
 @platform_router.get("/stores/{store_code}", response_model=StoreEntryResponse)

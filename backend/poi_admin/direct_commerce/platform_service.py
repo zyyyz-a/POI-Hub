@@ -230,6 +230,28 @@ class PlatformCommerceService:
         )
         return list(rows.scalars().all())
 
+    async def list_public_stores(self) -> list[tuple[StoreEntry, list[str]]]:
+        rows = await self.session.execute(
+            select(MiniProgramStoreBinding.store_code)
+            .join(
+                PlatformMiniProgram,
+                PlatformMiniProgram.id == MiniProgramStoreBinding.platform_mini_program_id,
+            )
+            .where(
+                MiniProgramStoreBinding.status == "active",
+                MiniProgramStoreBinding.discoverable.is_(True),
+                PlatformMiniProgram.status == "active",
+            )
+            .order_by(
+                MiniProgramStoreBinding.created_at, MiniProgramStoreBinding.store_code
+            )
+        )
+        results: list[tuple[StoreEntry, list[str]]] = []
+        for store_code in rows.scalars().all():
+            entry = await self.resolve(store_code)
+            results.append((entry, await self.blockers(entry)))
+        return results
+
     async def request_refund(
         self,
         store_code: str,

@@ -314,6 +314,7 @@ export interface StoreBindingRecord {
   entry_path?: string | null
   entry_scene?: string | null
   status: string
+  discoverable: boolean
   official_reference?: string | null
   evidence_reference?: string | null
   version: number

@@ -304,6 +304,23 @@ class ReconciliationResolve(BaseModel):
     note: str = Field(min_length=1, max_length=500)
 
 
+class PublicStoreSummary(BaseModel):
+    store_code: str
+    store_name: str
+    city: str | None
+    district: str | None
+    address: str
+    cover_image: str | None
+    logo: str | None
+    business_status: str
+    discoverable: bool
+    tradable: bool
+
+
+class PublicStoreListResponse(BaseModel):
+    items: list[PublicStoreSummary]
+
+
 __all__ = [
     "AppointmentCreate",
     "AppointmentResponse",
@@ -319,6 +336,8 @@ __all__ = [
     "PaymentProfileUpdate",
     "PaymentRequest",
     "PaymentResponse",
+    "PublicStoreListResponse",
+    "PublicStoreSummary",
     "ReconciliationBatchResponse",
     "ReconciliationImport",
     "ReconciliationItemResponse",
