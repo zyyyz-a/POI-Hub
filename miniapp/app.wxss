@@ -436,5 +436,14 @@ page {
   font-size: 24rpx;
 }
 
+.picker-search {
+  height: 80rpx;
+  background: #F3F4F6;
+  border-radius: 12rpx;
+  padding: 0 24rpx;
+  font-size: 28rpx;
+}
+
+
 
 

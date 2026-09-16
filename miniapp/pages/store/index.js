@@ -13,8 +13,9 @@ Page({
     storeCode: ''
   },
   onLoad(options) {
-    const storeCode = parseEntry(options) || getApp().globalData.storeCode
-    getApp().globalData.storeCode = storeCode
+    const app = getApp()
+    const storeCode = parseEntry(options) || app.globalData.storeCode
+    app.applyStoreCode(storeCode)
     this.setData({ storeCode })
   },
   onShow() {
@@ -23,22 +24,26 @@ Page({
   onPullDownRefresh() {
     this.load().finally(() => wx.stopPullDownRefresh())
   },
+  goStorePicker() {
+    wx.reLaunch({ url: '/pages/store-picker/index' })
+  },
   async load() {
-    const storeCode = this.data.storeCode
+    const storeCode = this.data.storeCode || getApp().globalData.storeCode
     if (!storeCode) {
-      wx.redirectTo({ url: '/pages/entry-error/index?reason=missing' })
+      this.goStorePicker()
       return
     }
     this.setData({ state: 'loading', message: '' })
     try {
       const store = await api.store(storeCode)
-      getApp().globalData.store = store
+      getApp().confirmedStore(store.store_code || storeCode)
       let products = []
       try {
         products = (await api.products(storeCode)).map(util.decorateProduct)
       } catch (error) {
         products = []
       }
+      getApp().globalData.store = store
       getApp().globalData.products = products
       this.setData({
         state: 'content',
@@ -49,7 +54,10 @@ Page({
       })
     } catch (error) {
       if (error.status === 404) {
-        wx.redirectTo({ url: '/pages/entry-error/index?reason=invalid' })
+        getApp().clearStore()
+        this.setData({ storeCode: '' })
+        wx.showToast({ title: '门店入口无效', icon: 'none' })
+        setTimeout(() => this.goStorePicker(), 800)
         return
       }
       this.setData({ state: 'error', message: error.message })

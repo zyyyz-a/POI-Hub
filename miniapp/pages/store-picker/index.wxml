@@ -1,0 +1,34 @@
+<view class="page">
+  <view class="card">
+    <input class="picker-search" value="{{keyword}}" bindinput="onKeyword" placeholder="搜索门店名称" confirm-type="search" />
+    <view class="btn btn-ghost btn-block" style="margin-top:16rpx" bindtap="scan">扫描门店二维码</view>
+  </view>
+
+  <page-state
+    wx:if="{{state !== 'content'}}"
+    state="{{state}}"
+    message="{{message}}"
+    bind:action="load"
+  />
+
+  <view
+    wx:for="{{visible}}"
+    wx:key="store_code"
+    class="card"
+    bindtap="choose"
+    data-code="{{item.store_code}}"
+  >
+    <view class="row">
+      <image wx:if="{{item.cover_image || item.logo}}" class="thumb" src="{{item.cover_image || item.logo}}" mode="aspectFill" />
+      <view wx:else class="thumb thumb-placeholder">门店</view>
+      <view class="grow">
+        <view class="row-between">
+          <view class="subtitle">{{item.store_name}}</view>
+          <view class="tag {{item.business_status === 'preparing' ? 'tag-warning' : (item.business_status === 'closed' ? 'tag-muted' : 'tag-success')}}">{{item.status_text}}</view>
+        </view>
+        <view class="muted ellipsis">{{item.city || ''}}{{item.district || ''}}</view>
+        <view class="muted ellipsis">{{item.address}}</view>
+      </view>
+    </view>
+  </view>
+</view>

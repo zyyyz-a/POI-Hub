@@ -44,6 +44,7 @@ module.exports = {
   apiBaseUrl: config.apiBaseUrl,
   customerServicePhone: config.customerServicePhone || '',
   login: (code, storeCode) => request(`${root(storeCode)}/login`, { method: 'POST', data: { code } }),
+  stores: () => request('/public/platform/stores'),
   store: storeCode => request(root(storeCode)),
   products: storeCode => request(`${root(storeCode)}/products`),
   product: (storeCode, productId) => request(`${root(storeCode)}/products/${productId}`),

@@ -1,6 +1,7 @@
 {
   "pages": [
     "pages/store/index",
+    "pages/store-picker/index",
     "pages/orders/index",
     "pages/profile/index",
     "pages/product/index",

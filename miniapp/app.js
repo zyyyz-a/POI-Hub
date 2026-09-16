@@ -10,14 +10,39 @@ App({
     currentOrder: null
   },
   onLaunch(options) {
-    const storeCode = parseEntry(options)
-    this.globalData.storeCode = storeCode
-    if (storeCode) {
-      try {
-        wx.setStorageSync('lastStoreCode', storeCode)
-      } catch (error) {
-        // storage is best-effort only
-      }
+    this.applyStoreCode(parseEntry(options))
+  },
+  resetStoreState() {
+    this.globalData.accessToken = ''
+    this.globalData.store = null
+    this.globalData.products = []
+    this.globalData.currentOrder = null
+    this.loginPromise = null
+  },
+  applyStoreCode(code) {
+    const next = code || ''
+    if (next && next !== this.globalData.storeCode) this.resetStoreState()
+    this.globalData.storeCode = next
+    return next
+  },
+  confirmedStore(code) {
+    const next = code || ''
+    if (!next) return
+    if (next !== this.globalData.storeCode) this.resetStoreState()
+    this.globalData.storeCode = next
+    try {
+      wx.setStorageSync('lastStoreCode', next)
+    } catch (error) {
+      // storage is best-effort only
+    }
+  },
+  clearStore() {
+    this.resetStoreState()
+    this.globalData.storeCode = ''
+    try {
+      wx.removeStorageSync('lastStoreCode')
+    } catch (error) {
+      // storage is best-effort only
     }
   },
   ensureLogin() {
@@ -25,7 +50,7 @@ App({
     if (this.loginPromise) return this.loginPromise
     this.loginPromise = new Promise((resolve, reject) => {
       if (!this.globalData.storeCode) {
-        reject(new Error('门店入口缺失，请从门店页面重新进入'))
+        reject(new Error('请先选择门店'))
         return
       }
       wx.login({
