@@ -14,6 +14,7 @@ from poi_admin.core.database import get_session
 from poi_admin.core.dependencies import AuthContext, auth_error, require_csrf, require_permission
 from poi_admin.core.permissions import Permission
 
+from .entry_code import StoreEntryCodeService
 from .platform_service import PlatformCommerceService
 from .reconciliation import (
     DirectReconciliationError,
@@ -45,6 +46,9 @@ from .schemas import (
     RefundCreate,
     RefundRequest,
     RefundResponse,
+    StoreEntryCodeRequest,
+    StoreEntryCodeResponse,
+    StoreEntryDescriptor,
     StoreEntryResponse,
     VoucherConsumeRequest,
     VoucherResponse,
@@ -74,6 +78,14 @@ def _service(request: Request, session: AsyncSession) -> DirectCommerceService:
 
 def _platform_service(request: Request, session: AsyncSession) -> PlatformCommerceService:
     return PlatformCommerceService(
+        session,
+        cast(Settings, request.app.state.settings),
+        http_client=getattr(request.app.state, "http_client", None),
+    )
+
+
+def _entry_code_service(request: Request, session: AsyncSession) -> StoreEntryCodeService:
+    return StoreEntryCodeService(
         session,
         cast(Settings, request.app.state.settings),
         http_client=getattr(request.app.state, "http_client", None),
@@ -350,6 +362,45 @@ async def update_payment_profile(
         response.model_dump(mode="json"),
     )
     return response
+
+
+@direct_commerce_router.get(
+    "/store-bindings/{binding_id}/entry", response_model=StoreEntryDescriptor
+)
+async def store_entry_descriptor(
+    binding_id: str,
+    request: Request,
+    context: Annotated[AuthContext, Depends(require_permission(Permission.VIEW_ONBOARDING))],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> StoreEntryDescriptor:
+    try:
+        data = await _entry_code_service(request, session).descriptor(
+            _tenant_id(context), binding_id
+        )
+    except DirectCommerceError as error:
+        _raise(error)
+    return StoreEntryDescriptor.model_validate(data)
+
+
+@direct_commerce_router.post(
+    "/store-bindings/{binding_id}/wxacode", response_model=StoreEntryCodeResponse
+)
+async def store_entry_wxacode(
+    binding_id: str,
+    payload: StoreEntryCodeRequest,
+    request: Request,
+    context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_ONBOARDING))],
+    csrf_context: Annotated[AuthContext, Depends(require_csrf)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> StoreEntryCodeResponse:
+    del csrf_context
+    try:
+        data = await _entry_code_service(request, session).generate(
+            _tenant_id(context), binding_id, payload.env_version
+        )
+    except DirectCommerceError as error:
+        _raise(error)
+    return StoreEntryCodeResponse.model_validate(data)
 
 
 @direct_commerce_router.get("/refunds", response_model=list[RefundResponse])

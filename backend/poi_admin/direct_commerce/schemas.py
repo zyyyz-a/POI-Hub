@@ -321,6 +321,25 @@ class PublicStoreListResponse(BaseModel):
     items: list[PublicStoreSummary]
 
 
+class StoreEntryDescriptor(BaseModel):
+    store_code: str
+    app_id: str | None
+    page: str
+    scene: str
+    entry_path: str | None
+    tencent_poi_id: str | None
+
+
+class StoreEntryCodeResponse(StoreEntryDescriptor):
+    available: bool
+    reason: str | None
+    image_base64: str | None
+
+
+class StoreEntryCodeRequest(BaseModel):
+    env_version: Literal["release", "trial", "develop"] = "release"
+
+
 __all__ = [
     "AppointmentCreate",
     "AppointmentResponse",
@@ -345,6 +364,9 @@ __all__ = [
     "RefundCreate",
     "RefundRequest",
     "RefundResponse",
+    "StoreEntryCodeRequest",
+    "StoreEntryCodeResponse",
+    "StoreEntryDescriptor",
     "StoreEntryResponse",
     "VoucherConsumeRequest",
     "VoucherResponse",

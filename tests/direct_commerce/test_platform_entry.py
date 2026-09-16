@@ -299,6 +299,40 @@ async def test_public_store_list_exposes_only_public_entry_fields(client: AsyncC
 
 
 @pytest.mark.asyncio
+async def test_store_entry_descriptor_and_wxacode_fallback(client: AsyncClient) -> None:
+    csrf, tenant_id = await login(client)
+    headers = {"X-CSRF-Token": csrf, "X-Tenant-ID": tenant_id}
+    store = await _tenant_store_with_product(
+        client, csrf, tenant_id, product_name="入口参数套餐", product_code="ENTRY-001"
+    )
+    program_id = await _platform_program(client, csrf, store["connection_id"])
+    binding = await _create_binding(
+        client, csrf, tenant_id, program_id, store["store_id"], "entrycode"
+    )
+    await _activate_binding(client, csrf, tenant_id, binding, "entrycode")
+
+    descriptor = await client.get(
+        f"/api/v1/direct-commerce/store-bindings/{binding['id']}/entry",
+        headers={"X-Tenant-ID": tenant_id},
+    )
+    assert descriptor.status_code == 200, descriptor.text
+    assert descriptor.json()["store_code"] == "entrycode"
+    assert descriptor.json()["scene"] == "store_code=entrycode"
+    assert descriptor.json()["page"] == "pages/store/index"
+
+    code = await client.post(
+        f"/api/v1/direct-commerce/store-bindings/{binding['id']}/wxacode",
+        headers=headers,
+        json={"env_version": "release"},
+    )
+    assert code.status_code == 200, code.text
+    body = code.json()
+    assert body["available"] is False
+    assert body["image_base64"] is None
+    assert body["reason"]
+
+
+@pytest.mark.asyncio
 async def test_payment_route_rejects_mismatched_merchant(client: AsyncClient) -> None:
     csrf, tenant_id = await login(client)
     headers = {"X-CSRF-Token": csrf, "X-Tenant-ID": tenant_id}
