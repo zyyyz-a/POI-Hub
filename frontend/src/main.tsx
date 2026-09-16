@@ -22,6 +22,7 @@ import { TenantsPage } from './pages/TenantsPage'
 import { OnboardingPage } from './pages/OnboardingPage'
 import { DirectCommercePage } from './pages/DirectCommercePage'
 import { PlatformMiniappPage } from './pages/PlatformMiniappPage'
+import { StoreOnboardingPage } from './pages/StoreOnboardingPage'
 import { BillingPage } from './pages/BillingPage'
 import { ReconciliationPage } from './pages/ReconciliationPage'
 import './styles.css'
@@ -45,6 +46,7 @@ function Protected() {
     <Route path="/stores" element={<StoresPage />} />
     <Route path="/onboarding" element={<OnboardingPage />} />
     <Route path="/platform-miniapp" element={<PlatformMiniappPage />} />
+    <Route path="/store-onboarding" element={<StoreOnboardingPage />} />
     <Route path="/direct-commerce" element={<DirectCommercePage />} />
     <Route path="/reconciliation" element={<ReconciliationPage />} />
     <Route path="/products" element={<ProductsPage />} />

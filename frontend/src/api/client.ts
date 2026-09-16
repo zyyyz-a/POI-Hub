@@ -424,6 +424,18 @@ export interface ReconciliationItemRecord {
   created_at: string
 }
 
+export interface StoreEntryDescriptorRecord {
+  store_code: string
+  app_id?: string | null
+  page: string
+  scene: string
+  entry_path?: string | null
+  tencent_poi_id?: string | null
+  available?: boolean
+  reason?: string | null
+  image_base64?: string | null
+}
+
 export class ApiError extends Error {
   status: number
   code?: string
@@ -599,6 +611,8 @@ export const api = {
   importReconciliation: (payload: { bill_date: string; csv?: string; rows?: Array<Record<string, unknown>> }) => request<ReconciliationBatchRecord>('/api/v1/direct-commerce/reconciliation/import', { method: 'POST', body: JSON.stringify(payload) }),
   reconciliationItems: (batchId: string) => request<ReconciliationItemRecord[]>(`/api/v1/direct-commerce/reconciliation/batches/${batchId}/items`),
   resolveReconciliationItem: (itemId: string, note: string) => request<ReconciliationItemRecord>(`/api/v1/direct-commerce/reconciliation/items/${itemId}/resolve`, { method: 'POST', body: JSON.stringify({ note }) }),
+  storeEntryDescriptor: (bindingId: string) => request<StoreEntryDescriptorRecord>(`/api/v1/direct-commerce/store-bindings/${bindingId}/entry`),
+  generateStoreEntryCode: (bindingId: string, envVersion: string) => request<StoreEntryDescriptorRecord>(`/api/v1/direct-commerce/store-bindings/${bindingId}/wxacode`, { method: 'POST', body: JSON.stringify({ env_version: envVersion }) }),
 }
 
 export function dashboardValues(payload: DashboardSummary | { summary: DashboardSummary }): DashboardSummary {

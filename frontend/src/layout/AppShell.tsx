@@ -16,6 +16,7 @@ const navigation: NavItem[] = [
   { key: '/stores', label: '门店管理', icon: <ShopOutlined />, roles: ['platform_admin', 'tenant_admin', 'operator', 'auditor'] },
   { key: '/onboarding', label: '准入与位置', icon: <SafetyCertificateOutlined />, roles: ['platform_admin', 'tenant_admin', 'operator', 'auditor'] },
   { key: '/platform-miniapp', label: '平台小程序接入', icon: <AppstoreOutlined />, roles: ['platform_admin', 'tenant_admin', 'operator', 'auditor'] },
+  { key: '/store-onboarding', label: '门店接入向导', icon: <ShopOutlined />, roles: ['platform_admin', 'tenant_admin', 'operator'] },
   { key: '/direct-commerce', label: '小程序交易', icon: <AppstoreOutlined />, roles: ['platform_admin', 'tenant_admin', 'operator', 'verifier', 'auditor'] },
   { key: '/reconciliation', label: '交易对账', icon: <FileSearchOutlined />, roles: ['platform_admin', 'tenant_admin', 'operator', 'auditor'] },
   { key: '/pois', label: '服务 POI', icon: <ApartmentOutlined />, roles: ['platform_admin', 'tenant_admin', 'operator', 'auditor'] },
