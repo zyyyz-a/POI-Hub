@@ -17,7 +17,11 @@ from poi_admin.connections.crypto import decrypt_secret_bundle, encrypt_secret_b
 from poi_admin.connections.models import WeChatConnection
 from poi_admin.connections.ports import Capability, ConnectionMode
 from poi_admin.core.config import Settings
-from poi_admin.onboarding.models import MerchantMiniProgram, PositionServiceMount
+from poi_admin.onboarding.models import (
+    MerchantMiniProgram,
+    PlatformMiniProgram,
+    PositionServiceMount,
+)
 from poi_admin.stores.models import Store
 
 from .models import (
@@ -105,7 +109,6 @@ class DirectCommerceService:
         return row
 
     async def create_product(self, tenant_id: str, values: dict[str, Any]) -> DirectProduct:
-        app = await self._tenant_app(tenant_id, str(values["mini_program_id"]))
         store = await self.session.scalar(
             select(Store).where(Store.tenant_id == tenant_id, Store.id == values["store_id"])
         )
@@ -114,8 +117,36 @@ class DirectCommerceService:
         if values["market_price"] < values["sale_price"]:
             raise DirectCommerceError("invalid_price", "划线价不能低于销售价")
         product_values = dict(values)
-        product_values.pop("mini_program_id", None)
-        row = DirectProduct(tenant_id=tenant_id, mini_program_id=app.id, **product_values)
+        mini_program_id = product_values.pop("mini_program_id", None)
+        platform_mini_program_id = product_values.pop("platform_mini_program_id", None)
+        resolved_app: str | None = None
+        resolved_program: str | None = None
+        if mini_program_id:
+            app = await self._tenant_app(tenant_id, str(mini_program_id))
+            resolved_app = app.id
+        elif platform_mini_program_id:
+            program = (
+                await self.session.execute(
+                    select(PlatformMiniProgram).where(
+                        PlatformMiniProgram.id == str(platform_mini_program_id)
+                    )
+                )
+            ).scalar_one_or_none()
+            if program is None:
+                raise DirectCommerceError(
+                    "platform_mini_program_not_found", "平台小程序不存在", 404
+                )
+            resolved_program = program.id
+        else:
+            raise DirectCommerceError(
+                "product_program_required", "请选择平台小程序或商家小程序", 422
+            )
+        row = DirectProduct(
+            tenant_id=tenant_id,
+            mini_program_id=resolved_app,
+            platform_mini_program_id=resolved_program,
+            **product_values,
+        )
         self.session.add(row)
         try:
             await self.session.commit()
@@ -132,7 +163,7 @@ class DirectCommerceService:
         if row.version != version:
             raise DirectCommerceError("version_conflict", "商品已被他人修改，请刷新", 409)
         if changes.get("status") == "listed":
-            await self._ready_app(row.mini_program_id)
+            await self._ensure_listing_program(row)
             if (changes.get("stock", row.stock) or 0) <= 0:
                 raise DirectCommerceError("stock_required", "上架商品库存必须大于零")
         for key, value in changes.items():
@@ -924,6 +955,27 @@ class DirectCommerceService:
             if app is not None and app.connection_id:
                 return await self.session.get(WeChatConnection, app.connection_id)
         return None
+
+    async def _ensure_listing_program(self, row: DirectProduct) -> None:
+        if row.mini_program_id:
+            await self._ready_app(row.mini_program_id)
+            return
+        if row.platform_mini_program_id:
+            program = (
+                await self.session.execute(
+                    select(PlatformMiniProgram).where(
+                        PlatformMiniProgram.id == row.platform_mini_program_id
+                    )
+                )
+            ).scalar_one_or_none()
+            if program is None:
+                raise DirectCommerceError(
+                    "platform_mini_program_not_found", "平台小程序不存在", 404
+                )
+            return
+        raise DirectCommerceError(
+            "product_program_required", "商品未绑定平台或商家小程序", 409
+        )
 
     async def _ready_app(self, mini_program_id: str) -> MerchantMiniProgram:
         app = await self._tenantless_app(mini_program_id)

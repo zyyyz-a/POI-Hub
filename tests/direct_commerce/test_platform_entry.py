@@ -299,6 +299,50 @@ async def test_public_store_list_exposes_only_public_entry_fields(client: AsyncC
 
 
 @pytest.mark.asyncio
+async def test_platform_product_without_merchant_mini_program(client: AsyncClient) -> None:
+    csrf, tenant_id = await login(client)
+    headers = {"X-CSRF-Token": csrf, "X-Tenant-ID": tenant_id}
+    store_id = await create_store(client, csrf, tenant_id)
+    connection = await client.post(
+        "/api/v1/connections",
+        headers=headers,
+        json={
+            "capability": "mini_program_commerce",
+            "mode": "mock",
+            "app_id": "wx-platform-product",
+            "merchant_id": "1900000109",
+        },
+    )
+    assert connection.status_code == 201, connection.text
+    program_id = await _platform_program(client, csrf, connection.json()["id"])
+
+    created = await client.post(
+        "/api/v1/direct-commerce/products",
+        headers=headers,
+        json={
+            "platform_mini_program_id": program_id,
+            "store_id": store_id,
+            "merchant_product_id": "PLAT-001",
+            "name": "平台套餐",
+            "sale_price": 9900,
+            "market_price": 16800,
+            "stock": 10,
+        },
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["mini_program_id"] is None
+    assert created.json()["platform_mini_program_id"] == program_id
+
+    listed = await client.patch(
+        f"/api/v1/direct-commerce/products/{created.json()['id']}",
+        headers=headers,
+        json={"version": created.json()["version"], "status": "listed"},
+    )
+    assert listed.status_code == 200, listed.text
+    assert listed.json()["status"] == "listed"
+
+
+@pytest.mark.asyncio
 async def test_store_entry_descriptor_and_wxacode_fallback(client: AsyncClient) -> None:
     csrf, tenant_id = await login(client)
     headers = {"X-CSRF-Token": csrf, "X-Tenant-ID": tenant_id}

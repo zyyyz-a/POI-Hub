@@ -30,7 +30,7 @@ export function DirectCommercePage() {
   const appointments = useQuery({ queryKey: ['direct-appointments', tenant?.id], queryFn: api.directAppointments, enabled: Boolean(tenant) })
   const vouchers = useQuery({ queryKey: ['direct-vouchers', tenant?.id], queryFn: api.directVouchers, enabled: Boolean(tenant) })
   const stores = useQuery({ queryKey: ['stores', tenant?.id], queryFn: api.stores, enabled: Boolean(tenant) })
-  const apps = useQuery({ queryKey: ['mini-programs', tenant?.id], queryFn: api.miniPrograms, enabled: Boolean(tenant) })
+  const programs = useQuery({ queryKey: ['platform-mini-programs'], queryFn: api.platformMiniPrograms, enabled: Boolean(tenant) })
 
   const refresh = async () => {
     await Promise.all([
@@ -116,7 +116,7 @@ export function DirectCommercePage() {
       { key: 'vouchers', label: '券码核销', children: <Card className="workspace-table-card" variant="borderless"><WorkspaceState loading={vouchers.isPending} error={vouchers.error} empty={!vouchers.data?.length}><Table<DirectVoucherRecord> rowKey="id" dataSource={vouchers.data || []} columns={voucherColumns} /></WorkspaceState></Card> },
     ]} />
     <Modal title="新增小程序商品" open={productModal} onCancel={() => setProductModal(false)} footer={null}><Form form={form} layout="vertical" initialValues={{ sale_price_yuan: 99, market_price_yuan: 129, stock: 10, appointment_required: true, service_minutes: 60 }} onFinish={values => createProduct.mutate(values)}>
-      <Form.Item name="mini_program_id" label="商家小程序" rules={[{ required: true }]}><Select options={(apps.data || []).map(item => ({ value: item.id, label: `${item.name} · ${item.app_id || '待注册'}` }))} /></Form.Item>
+      <Form.Item name="platform_mini_program_id" label="平台小程序" rules={[{ required: true }]}><Select options={(programs.data || []).map(item => ({ value: item.id, label: `${item.name} · ${item.app_id || '待注册'}` }))} /></Form.Item>
       <Form.Item name="store_id" label="服务门店" rules={[{ required: true }]}><Select options={(stores.data || []).map(item => ({ value: item.id, label: item.name }))} /></Form.Item>
       <Form.Item name="merchant_product_id" label="商家商品编号" rules={[{ required: true }]}><Input /></Form.Item><Form.Item name="name" label="商品名称" rules={[{ required: true }]}><Input /></Form.Item><Form.Item name="description" label="使用说明"><Input.TextArea /></Form.Item><Form.Item name="cover_image" label="封面图片 HTTPS 地址"><Input /></Form.Item>
       <Space align="start"><Form.Item name="sale_price_yuan" label="销售价（元）" rules={[{ required: true }]}><InputNumber min={0.01} precision={2} /></Form.Item><Form.Item name="market_price_yuan" label="划线价（元）" rules={[{ required: true }]}><InputNumber min={0.01} precision={2} /></Form.Item><Form.Item name="stock" label="库存" rules={[{ required: true }]}><InputNumber min={0} precision={0} /></Form.Item></Space>

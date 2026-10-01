@@ -9,7 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class DirectProductCreate(BaseModel):
-    mini_program_id: str
+    mini_program_id: str | None = Field(default=None, max_length=36)
+    platform_mini_program_id: str | None = Field(default=None, max_length=36)
     store_id: str
     merchant_product_id: str = Field(min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=200)
@@ -40,7 +41,8 @@ class DirectProductResponse(BaseModel):
 
     id: str
     tenant_id: str
-    mini_program_id: str
+    mini_program_id: str | None
+    platform_mini_program_id: str | None
     store_id: str
     merchant_product_id: str
     name: str
@@ -85,7 +87,7 @@ class DirectOrderResponse(BaseModel):
 
     id: str
     tenant_id: str
-    mini_program_id: str
+    mini_program_id: str | None
     store_id: str
     product_id: str
     order_no: str

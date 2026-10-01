@@ -45,8 +45,11 @@ class DirectProduct(Base):
     tenant_id: Mapped[str] = mapped_column(
         ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    mini_program_id: Mapped[str] = mapped_column(
-        ForeignKey("merchant_mini_programs.id", ondelete="CASCADE"), nullable=False, index=True
+    mini_program_id: Mapped[str | None] = mapped_column(
+        ForeignKey("merchant_mini_programs.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    platform_mini_program_id: Mapped[str | None] = mapped_column(
+        ForeignKey("platform_mini_programs.id", ondelete="SET NULL"), nullable=True, index=True
     )
     store_id: Mapped[str] = mapped_column(
         ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True
@@ -198,8 +201,8 @@ class DirectOrder(Base):
     tenant_id: Mapped[str] = mapped_column(
         ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    mini_program_id: Mapped[str] = mapped_column(
-        ForeignKey("merchant_mini_programs.id", ondelete="CASCADE"), nullable=False, index=True
+    mini_program_id: Mapped[str | None] = mapped_column(
+        ForeignKey("merchant_mini_programs.id", ondelete="CASCADE"), nullable=True, index=True
     )
     store_id: Mapped[str] = mapped_column(
         ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False, index=True

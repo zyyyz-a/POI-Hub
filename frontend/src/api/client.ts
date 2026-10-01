@@ -241,7 +241,8 @@ export interface OnboardingReadiness {
 
 export interface DirectProductRecord {
   id: string
-  mini_program_id: string
+  mini_program_id?: string | null
+  platform_mini_program_id?: string | null
   store_id: string
   merchant_product_id: string
   name: string
