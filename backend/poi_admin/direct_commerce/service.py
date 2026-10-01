@@ -347,6 +347,7 @@ class DirectCommerceService:
         description: str | None,
     ) -> tuple[DirectOrder, dict[str, str], str | None]:
         order = await self.consumer_order(mini_program_id, consumer.id, order_id)
+        order = await self._lock_order(order.tenant_id, order.id)
         if order.status == "paid":
             voucher = await self._voucher_for_order(order.id)
             code = self._decrypt_code(voucher) if voucher else None
@@ -354,9 +355,10 @@ class DirectCommerceService:
         if order.status != "payment_pending":
             raise DirectCommerceError("order_not_payable", "订单当前不能支付", 409)
         if _aware(order.expires_at) <= utcnow():
-            order.status = "expired"
-            await self._restore_stock(order)
-            await self.session.commit()
+            if not await self.expire_order(order):
+                raise DirectCommerceError(
+                    "payment_confirmation_pending", "正在核对支付结果，请稍后查看订单", 409
+                )
             raise DirectCommerceError("order_expired", "订单已超时，请重新下单", 409)
         app = await self._ready_app(mini_program_id)
         connection = await self._commerce_connection(app)
@@ -422,7 +424,10 @@ class DirectCommerceService:
         order = (
             await self.session.execute(
                 select(DirectOrder)
-                .where(DirectOrder.mini_program_id == app.id, DirectOrder.order_no == order_no)
+                .where(
+                    DirectOrder.mini_program_id == app.id, DirectOrder.order_no == order_no,
+                    DirectOrder.platform_mini_program_id.is_(None),
+                )
                 .with_for_update()
             )
         ).scalar_one_or_none()
@@ -436,8 +441,6 @@ class DirectCommerceService:
             or total != order.total_amount
         ):
             raise DirectCommerceError("payment_identity_mismatch", "支付通知身份或金额不匹配", 400)
-        if order.status == "paid":
-            return
         transaction_id = transaction.get("transaction_id")
         if not isinstance(transaction_id, str) or not transaction_id:
             raise DirectCommerceError("transaction_id_missing", "支付通知缺少交易号", 400)
@@ -452,8 +455,10 @@ class DirectCommerceService:
         values: dict[str, Any],
     ) -> DirectAppointment:
         order = await self.consumer_order(mini_program_id, consumer.id, order_id)
-        if order.status != "paid":
+        order = await self._lock_order(order.tenant_id, order.id)
+        if order.status not in {"paid", "partially_refunded"}:
             raise DirectCommerceError("paid_order_required", "订单支付后才能预约", 409)
+        await self._require_usable_voucher(order)
         starts_at = values["starts_at"]
         if _aware(starts_at) <= utcnow():
             raise DirectCommerceError("appointment_in_past", "预约时间必须晚于当前时间")
@@ -497,11 +502,12 @@ class DirectCommerceService:
         self, mini_program_id: str, consumer_id: str, order_id: str
     ) -> tuple[DirectVoucher, str]:
         order = await self.consumer_order(mini_program_id, consumer_id, order_id)
-        if order.status != "paid":
+        if order.status not in {"paid", "partially_refunded"}:
             raise DirectCommerceError("paid_order_required", "订单尚未支付", 409)
         voucher = await self._voucher_for_order(order.id)
         if voucher is None:
             raise DirectCommerceError("voucher_not_found", "订单券码尚未生成", 404)
+        await self._require_usable_voucher(order)
         return voucher, self._decrypt_code(voucher)
 
     async def consume_voucher(
@@ -521,6 +527,10 @@ class DirectCommerceService:
         ).scalar_one_or_none()
         if voucher is None:
             raise DirectCommerceError("voucher_not_found", "券码不存在", 404)
+        order = await self._lock_order(tenant_id, voucher.order_id)
+        if order.store_id != store_id:
+            raise DirectCommerceError("voucher_store_mismatch", "券码不适用于该门店", 409)
+        await self._require_usable_voucher(order)
         result = await self.session.execute(
             update(DirectVoucher)
             .where(
@@ -545,6 +555,10 @@ class DirectCommerceService:
 
     async def revoke_voucher(self, tenant_id: str, voucher_id: str, version: int) -> DirectVoucher:
         voucher = await self._voucher(tenant_id, voucher_id)
+        order = await self._lock_order(tenant_id, voucher.order_id)
+        await self.session.refresh(voucher)
+        if order.status not in {"paid", "partially_refunded"}:
+            raise DirectCommerceError("order_not_usable", "订单当前不能恢复券码", 409)
         if voucher.version != version:
             raise DirectCommerceError("version_conflict", "券码已被他人处理，请刷新", 409)
         if voucher.state != "consumed":
@@ -675,6 +689,34 @@ class DirectCommerceService:
             raise DirectCommerceError("order_not_found", "订单不存在", 404)
         return row
 
+    async def _lock_order(self, tenant_id: str, order_id: str) -> DirectOrder:
+        row = await self.session.scalar(
+            select(DirectOrder).where(
+                DirectOrder.tenant_id == tenant_id, DirectOrder.id == order_id
+            ).with_for_update().execution_options(populate_existing=True)
+        )
+        if row is None:
+            raise DirectCommerceError("order_not_found", "订单不存在", 404)
+        return row
+
+    async def _active_refund(self, order_id: str) -> DirectRefund | None:
+        result = await self.session.execute(
+            select(DirectRefund).where(
+                DirectRefund.order_id == order_id,
+                DirectRefund.status.in_(["requested", "pending", "processing"]),
+            ).order_by(DirectRefund.created_at).limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def _require_usable_voucher(self, order: DirectOrder) -> DirectVoucher:
+        voucher = await self._voucher_for_order(order.id)
+        if (order.status not in {"paid", "partially_refunded"} or voucher is None
+                or voucher.state != "available" or _aware(voucher.valid_until) <= utcnow()):
+            raise DirectCommerceError("voucher_not_consumable", "券码已核销、已失效或已过期", 409)
+        if await self._active_refund(order.id):
+            raise DirectCommerceError("refund_in_progress", "退款处理中，暂不可使用券码", 409)
+        return voucher
+
     async def request_refund(
         self,
         tenant_id: str,
@@ -684,12 +726,7 @@ class DirectCommerceService:
         idempotency_key: str,
         actor_user_id: str | None,
     ) -> DirectRefund:
-        order = await self.get_order(tenant_id, order_id)
-        if order.status not in {"paid", "partially_refunded"}:
-            raise DirectCommerceError("order_not_refundable", "订单当前不能退款", 409)
-        remaining = order.total_amount - order.refunded_amount
-        if amount <= 0 or amount > remaining:
-            raise DirectCommerceError("invalid_refund_amount", "退款金额超出可退范围", 422)
+        order = await self._lock_order(tenant_id, order_id)
         existing = await self.session.scalar(
             select(DirectRefund).where(
                 DirectRefund.tenant_id == tenant_id,
@@ -702,6 +739,13 @@ class DirectCommerceService:
                     "idempotency_conflict", "幂等键已用于其他退款", 409
                 )
             return existing
+        if order.status not in {"paid", "partially_refunded"}:
+            raise DirectCommerceError("order_not_refundable", "订单当前不能退款", 409)
+        remaining = order.paid_amount - order.refunded_amount
+        if amount <= 0 or amount > remaining:
+            raise DirectCommerceError("invalid_refund_amount", "退款金额超出可退范围", 422)
+        if await self._active_refund(order.id):
+            raise DirectCommerceError("refund_in_progress", "已有退款申请正在处理", 409)
         refund = DirectRefund(
             tenant_id=tenant_id,
             order_id=order.id,
@@ -728,14 +772,9 @@ class DirectCommerceService:
         reason: str | None,
         idempotency_key: str,
     ) -> DirectRefund:
-        order = await self.get_order(tenant_id, order_id)
+        order = await self._lock_order(tenant_id, order_id)
         if order.platform_consumer_id != consumer_id:
             raise DirectCommerceError("order_not_found", "订单不存在", 404)
-        if order.status not in {"paid", "partially_refunded"}:
-            raise DirectCommerceError("order_not_refundable", "订单当前不能退款", 409)
-        amount = order.total_amount - order.refunded_amount
-        if amount <= 0:
-            raise DirectCommerceError("order_not_refundable", "订单已无可退金额", 409)
         existing = await self.session.scalar(
             select(DirectRefund).where(
                 DirectRefund.tenant_id == tenant_id,
@@ -743,7 +782,18 @@ class DirectCommerceService:
             )
         )
         if existing is not None:
+            if existing.order_id != order_id:
+                raise DirectCommerceError("idempotency_conflict", "幂等键已用于其他退款", 409)
             return existing
+        if order.status not in {"paid", "partially_refunded"}:
+            raise DirectCommerceError("order_not_refundable", "订单当前不能退款", 409)
+        active = await self._active_refund(order.id)
+        if active is not None:
+            return active
+        await self._require_usable_voucher(order)
+        amount = order.paid_amount - order.refunded_amount
+        if amount <= 0:
+            raise DirectCommerceError("order_not_refundable", "订单已无可退金额", 409)
         refund = DirectRefund(
             tenant_id=tenant_id,
             order_id=order.id,
@@ -769,6 +819,8 @@ class DirectCommerceService:
             )
             if duplicate is None:
                 raise DirectCommerceError("refund_conflict", "退款申请冲突", 409) from None
+            if duplicate.order_id != order_id:
+                raise DirectCommerceError("idempotency_conflict", "幂等键已用于其他退款", 409)
             return duplicate
         await self.session.refresh(refund)
         return refund
@@ -781,9 +833,14 @@ class DirectCommerceService:
         )
         if refund is None:
             raise DirectCommerceError("refund_not_found", "退款单不存在", 404)
+        order = await self._lock_order(tenant_id, refund.order_id)
+        await self.session.refresh(refund)
         if refund.status != "requested":
             raise DirectCommerceError("refund_not_pending", "退款单当前不能受理", 409)
-        order = await self.get_order(tenant_id, refund.order_id)
+        if order.status not in {"paid", "partially_refunded"} or (
+            refund.amount > order.paid_amount - order.refunded_amount
+        ):
+            raise DirectCommerceError("order_not_refundable", "订单当前可退金额不足", 409)
         refund.status = "pending"
         await self._process_refund(order, refund)
         return refund
@@ -791,7 +848,9 @@ class DirectCommerceService:
     async def _process_refund(self, order: DirectOrder, refund: DirectRefund) -> None:
         amount = refund.amount
         connection = await self._connection_for_order(order)
-        if connection is None or connection.mode == ConnectionMode.MOCK.value:
+        if connection is None:
+            raise DirectCommerceError("payment_connection_required", "订单支付连接缺失", 409)
+        if connection.mode == ConnectionMode.MOCK.value:
             await self._apply_refund(order, refund)
             refund.status = "success"
             refund.wechat_refund_id = "MOCKREFUND" + secrets.token_hex(6).upper()
@@ -801,6 +860,10 @@ class DirectCommerceService:
             return
         bundle = self._secrets(connection)
         merchant_id = order.mchid_snapshot or connection.merchant_id
+        # Persist the refund number before any external effect. An ambiguous timeout
+        # must not erase the intent and allow another refund with a new number.
+        tenant_id, order_id = order.tenant_id, order.id
+        await self.session.commit()
         try:
             result = await WeChatPayClient(self.http_client).create_refund(
                 out_refund_no=refund.refund_no,
@@ -819,8 +882,11 @@ class DirectCommerceService:
                 sub_mchid=order.sub_mchid_snapshot,
             )
         except WeChatPayError as error:
-            await self.session.rollback()
             raise DirectCommerceError(error.code, error.message, error.status_code) from error
+        order = await self._lock_order(tenant_id, order_id)
+        await self.session.refresh(refund)
+        if refund.status == "success":
+            return
         refund.wechat_refund_id = result.refund_id
         if result.status == "SUCCESS":
             await self._apply_refund(order, refund)
@@ -834,7 +900,7 @@ class DirectCommerceService:
         await self.session.refresh(refund)
 
     async def query_order(self, tenant_id: str, order_id: str) -> DirectOrder:
-        order = await self.get_order(tenant_id, order_id)
+        order = await self._lock_order(tenant_id, order_id)
         if order.status != "payment_pending" or not order.prepay_id:
             return order
         connection = await self._connection_for_order(order)
@@ -860,7 +926,19 @@ class DirectCommerceService:
         trade_state = result.get("trade_state")
         amount = result.get("amount")
         total = amount.get("total") if isinstance(amount, dict) else None
-        if trade_state == "SUCCESS" and total == order.total_amount:
+        if trade_state == "SUCCESS":
+            from poi_admin.onboarding.models import PlatformMiniProgram
+
+            program = (await self.session.get(PlatformMiniProgram, order.platform_mini_program_id)
+                       if order.platform_mini_program_id else
+                       await self.session.get(MerchantMiniProgram, order.mini_program_id))
+            if (program is None or (result.get("appid") or result.get("sp_appid")) != program.app_id
+                    or (result.get("mchid") or result.get("sp_mchid")) != merchant_id
+                    or result.get("sub_mchid") != order.sub_mchid_snapshot
+                    or result.get("out_trade_no") != order.order_no or total != order.total_amount):
+                raise DirectCommerceError(
+                    "payment_identity_mismatch", "支付查询身份或金额不匹配", 400
+                )
             transaction_id = result.get("transaction_id")
             if isinstance(transaction_id, str) and transaction_id:
                 await self._mark_paid(order, transaction_id=transaction_id)
@@ -885,18 +963,49 @@ class DirectCommerceService:
             .scalars()
             .all()
         )
-        for order in rows:
-            order.status = "expired"
+        closed = 0
+        order_ids = [(order.tenant_id, order.id) for order in rows]
+        for tenant_id, order_id in order_ids:
+            order = await self.get_order(tenant_id, order_id)
+            closed += int(await self.expire_order(order))
+        return closed
+
+    async def expire_order(self, order: DirectOrder) -> bool:
+        order = await self._lock_order(order.tenant_id, order.id)
+        if order.status != "payment_pending" or _aware(order.expires_at) > utcnow():
+            return False
+        if order.prepay_id:
+            try:
+                order = await self.query_order(order.tenant_id, order.id)
+            except DirectCommerceError:
+                await self.session.rollback()
+                return False
+            order = await self._lock_order(order.tenant_id, order.id)
+            if order.status != "payment_pending":
+                return order.status == "closed"
+        # Stock is released only after the upstream confirms closure. On ambiguity,
+        # retain the reservation and let payment notification / maintenance reconcile.
+        if not await self._try_close_gateway(order):
+            await self.session.rollback()
+            return False
+        result = await self.session.execute(update(DirectOrder).where(
+            DirectOrder.id == order.id, DirectOrder.status == "payment_pending"
+        ).values(status="expired").execution_options(synchronize_session=False))
+        changed = cast(CursorResult[Any], result).rowcount == 1
+        if changed:
             await self._restore_stock(order)
-            await self._try_close_gateway(order)
-        if rows:
-            await self.session.commit()
-        return len(rows)
+        await self.session.commit()
+        await self.session.refresh(order)
+        return changed
 
     async def run_maintenance(self) -> dict[str, int]:
         return {"closed_orders": await self.close_expired_orders()}
 
     async def _apply_refund(self, order: DirectOrder, refund: DirectRefund) -> None:
+        if refund.status == "success":
+            return
+        if refund.amount > order.paid_amount - order.refunded_amount:
+            raise DirectCommerceError("refund_amount_conflict", "退款金额超过订单剩余实付金额", 409)
         order.refunded_amount += refund.amount
         voucher = await self._voucher_for_order(order.id)
         appointment = await self.session.scalar(
@@ -923,13 +1032,15 @@ class DirectCommerceService:
         else:
             order.status = "partially_refunded"
 
-    async def _try_close_gateway(self, order: DirectOrder) -> None:
+    async def _try_close_gateway(self, order: DirectOrder) -> bool:
         connection = await self._connection_for_order(order)
-        if connection is None or connection.mode != ConnectionMode.LIVE.value:
-            return
-        bundle = self._secrets(connection)
-        merchant_id = order.mchid_snapshot or connection.merchant_id
+        if connection is None:
+            return False
+        if connection.mode != ConnectionMode.LIVE.value:
+            return True
         try:
+            bundle = self._secrets(connection)
+            merchant_id = order.mchid_snapshot or connection.merchant_id
             await WeChatPayClient(self.http_client).close_order(
                 order_no=order.order_no,
                 merchant_id=self._required_value(merchant_id, "微信支付商户号"),
@@ -942,14 +1053,20 @@ class DirectCommerceService:
                 ),
                 sub_mchid=order.sub_mchid_snapshot,
             )
+        except WeChatPayError as error:
+            return error.code in {"wechatpay_order_not_found", "wechatpay_order_closed"}
         except DirectCommerceError:
-            return
+            return False
+        return True
 
     async def _connection_for_order(self, order: DirectOrder) -> WeChatConnection | None:
         if order.payment_profile_id:
             profile = await self.session.get(MerchantPaymentProfile, order.payment_profile_id)
             if profile is not None and profile.connection_id:
                 return await self.session.get(WeChatConnection, profile.connection_id)
+            return None
+        if order.platform_mini_program_id:
+            return None
         if order.mini_program_id:
             app = await self.session.get(MerchantMiniProgram, order.mini_program_id)
             if app is not None and app.connection_id:
@@ -1065,10 +1182,24 @@ class DirectCommerceService:
         return self._required(value, "openid", "顾客 openid")
 
     async def _mark_paid(self, order: DirectOrder, transaction_id: str) -> str:
-        order.status = "paid"
-        order.paid_amount = order.total_amount
-        order.transaction_id = transaction_id
-        order.paid_at = utcnow()
+        order = await self._lock_order(order.tenant_id, order.id)
+        if order.paid_at is not None:
+            if order.transaction_id != transaction_id:
+                raise DirectCommerceError("payment_transaction_conflict", "支付交易号不一致", 409)
+            voucher = await self._voucher_for_order(order.id)
+            return self._decrypt_code(voucher) if voucher else ""
+        result = await self.session.execute(update(DirectOrder).where(
+            DirectOrder.id == order.id,
+            DirectOrder.status == "payment_pending",
+            DirectOrder.paid_at.is_(None),
+        ).values(status="paid", paid_amount=order.total_amount,
+                 transaction_id=transaction_id, paid_at=utcnow())
+            .execution_options(synchronize_session=False))
+        if cast(CursorResult[Any], result).rowcount != 1:
+            raise DirectCommerceError(
+                "payment_state_conflict", "订单状态与支付结果冲突，请核对", 409
+            )
+        await self.session.refresh(order)
         await self.session.execute(
             update(DirectProduct)
             .where(DirectProduct.id == order.product_id)
@@ -1101,6 +1232,7 @@ class DirectCommerceService:
         return (
             await self.session.execute(
                 select(DirectVoucher).where(DirectVoucher.order_id == order_id)
+                .execution_options(populate_existing=True)
             )
         ).scalar_one_or_none()
 

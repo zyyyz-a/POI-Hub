@@ -101,6 +101,14 @@ class DirectOrderResponse(BaseModel):
     expires_at: datetime
     paid_at: datetime | None
     created_at: datetime
+    store_code: str | None = None
+    display_status: str | None = None
+    voucher_state: str | None = None
+    refund_status: str | None = None
+    can_pay: bool = False
+    can_book: bool = False
+    can_show_voucher: bool = False
+    can_refund: bool = False
 
 
 class PaymentRequest(BaseModel):

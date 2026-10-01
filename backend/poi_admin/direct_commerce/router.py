@@ -16,6 +16,7 @@ from poi_admin.core.permissions import Permission
 
 from .entry_code import StoreEntryCodeService
 from .platform_service import PlatformCommerceService
+from .presentation import present_orders
 from .reconciliation import (
     DirectReconciliationError,
     DirectReconciliationService,
@@ -831,7 +832,7 @@ async def platform_create_order(
 ) -> DirectOrderResponse:
     service = _platform_service(request, session)
     try:
-        _, consumer = await service.consumer(_bearer(request), store_code)
+        entry, consumer = await service.consumer(_bearer(request), store_code, tradable=False)
         row = await service.create_order(
             store_code,
             consumer,
@@ -841,7 +842,7 @@ async def platform_create_order(
         )
     except DirectCommerceError as error:
         _raise(error)
-    return DirectOrderResponse.model_validate(row)
+    return (await present_orders(session, [row], tradable=not await service.blockers(entry)))[0]
 
 
 @platform_router.get(
@@ -855,11 +856,11 @@ async def platform_get_order(
 ) -> DirectOrderResponse:
     service = _platform_service(request, session)
     try:
-        _, consumer = await service.consumer(_bearer(request), store_code, tradable=False)
+        entry, consumer = await service.consumer(_bearer(request), store_code, tradable=False)
         row = await service.order(store_code, consumer.id, order_id)
     except DirectCommerceError as error:
         _raise(error)
-    return DirectOrderResponse.model_validate(row)
+    return (await present_orders(session, [row], tradable=not await service.blockers(entry)))[0]
 
 
 @platform_router.post(
@@ -881,7 +882,7 @@ async def platform_pay_order(
     except DirectCommerceError as error:
         _raise(error)
     return PaymentResponse(
-        order=DirectOrderResponse.model_validate(order),
+        order=(await present_orders(session, [order], tradable=True))[0],
         payment_parameters=parameters,
         mock_voucher_code=mock_code,
     )
@@ -952,11 +953,11 @@ async def platform_list_orders(
 ) -> list[DirectOrderResponse]:
     service = _platform_service(request, session)
     try:
-        _, consumer = await service.consumer(_bearer(request), store_code, tradable=False)
+        entry, consumer = await service.consumer(_bearer(request), store_code, tradable=False)
         rows = await service.orders(store_code, consumer.id)
     except DirectCommerceError as error:
         _raise(error)
-    return [DirectOrderResponse.model_validate(item) for item in rows]
+    return await present_orders(session, rows, tradable=not await service.blockers(entry))
 
 
 @platform_router.post(

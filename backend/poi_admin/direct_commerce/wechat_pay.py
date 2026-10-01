@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 import httpx
-from cryptography.exceptions import InvalidSignature
+from cryptography.exceptions import InvalidSignature, InvalidTag
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -124,7 +124,7 @@ def decrypt_notification_resource(resource: Mapping[str, Any], api_v3_key: str) 
         associated_data = str(resource.get("associated_data") or "").encode()
         plaintext = AESGCM(api_v3_key.encode()).decrypt(nonce, ciphertext, associated_data)
         value = json.loads(plaintext.decode())
-    except (KeyError, ValueError, TypeError) as error:
+    except (KeyError, ValueError, TypeError, InvalidTag) as error:
         raise WeChatPayError("wechatpay_resource_invalid", "支付通知密文无效", 400) from error
     if not isinstance(value, dict):
         raise WeChatPayError("wechatpay_resource_invalid", "支付通知资源格式无效", 400)
@@ -188,11 +188,17 @@ class WeChatPayClient:
             if owns_client:
                 await client.aclose()
         verify_http_response(response, wechatpay_public_key_pem)
+        try:
+            value = response.json() if response.content else {}
+        except ValueError as error:
+            raise WeChatPayError("wechatpay_response_invalid", "微信支付响应格式无效") from error
         if response.status_code >= 400:
+            code = value.get("code") if isinstance(value, dict) else None
+            if code == "ORDERNOTEXIST":
+                raise WeChatPayError("wechatpay_order_not_found", "微信支付订单不存在")
+            if code == "ORDERCLOSED":
+                raise WeChatPayError("wechatpay_order_closed", "微信支付订单已关闭")
             raise WeChatPayError("wechatpay_rejected", "微信支付请求失败")
-        if not response.content:
-            return {}
-        value = response.json()
         return value if isinstance(value, dict) else {}
 
     async def create_jsapi_order(
@@ -213,6 +219,7 @@ class WeChatPayClient:
     ) -> MiniProgramPayment:
         path = "/v3/pay/transactions/jsapi"
         if sub_mchid:
+            path = "/v3/pay/partner/transactions/jsapi"
             payload: dict[str, Any] = {
                 "sp_appid": app_id,
                 "sp_mchid": sp_mchid or merchant_id,
@@ -276,7 +283,7 @@ class WeChatPayClient:
     ) -> dict[str, Any]:
         if sub_mchid:
             path = (
-                f"/v3/pay/transactions/out-trade-no/{order_no}"
+                f"/v3/pay/partner/transactions/out-trade-no/{order_no}"
                 f"?sp_mchid={sp_mchid or merchant_id}&sub_mchid={sub_mchid}"
             )
         else:
@@ -304,6 +311,7 @@ class WeChatPayClient:
     ) -> None:
         path = f"/v3/pay/transactions/out-trade-no/{order_no}/close"
         if sub_mchid:
+            path = f"/v3/pay/partner/transactions/out-trade-no/{order_no}/close"
             payload: dict[str, Any] = {"sp_mchid": sp_mchid or merchant_id, "sub_mchid": sub_mchid}
         else:
             payload = {"mchid": merchant_id}

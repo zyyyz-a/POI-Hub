@@ -19,6 +19,7 @@ from poi_admin.connections.crypto import decrypt_secret_bundle, encrypt_secret_b
 from poi_admin.connections.models import WeChatConnection
 from poi_admin.connections.ports import Capability, ConnectionMode
 from poi_admin.core.config import Settings
+from poi_admin.identity.models import Tenant
 from poi_admin.onboarding.models import MiniProgramStoreBinding, PlatformMiniProgram
 from poi_admin.stores.models import Store
 
@@ -100,6 +101,9 @@ class PlatformCommerceService:
 
     async def blockers(self, entry: StoreEntry) -> list[str]:
         blockers: list[str] = []
+        tenant = await self.session.get(Tenant, entry.binding.tenant_id)
+        if tenant is None or tenant.status != "active":
+            blockers.append("商户已停用")
         if entry.program.status != "active":
             blockers.append("平台小程序未启用")
         if not entry.program.app_id:
@@ -282,7 +286,8 @@ class PlatformCommerceService:
         idempotency_key: str,
     ) -> DirectOrder:
         entry = await self.resolve(store_code)
-        await self.require_tradable(entry)
+        if quantity != 1:
+            raise DirectCommerceError("invalid_quantity", "每单限购 1 份")
         existing = await self.session.scalar(
             select(DirectOrder).where(
                 DirectOrder.tenant_id == entry.binding.tenant_id,
@@ -293,11 +298,14 @@ class PlatformCommerceService:
             if (
                 existing.platform_consumer_id != consumer.id
                 or existing.product_id != product_id
+                or existing.store_binding_id != entry.binding.id
+                or existing.quantity != quantity
             ):
                 raise DirectCommerceError(
                     "idempotency_conflict", "幂等键已用于其他订单", 409
                 )
             return existing
+        await self.require_tradable(entry)
         product = await self.session.scalar(
             select(DirectProduct).where(
                 DirectProduct.id == product_id,
@@ -332,7 +340,8 @@ class PlatformCommerceService:
             payment_profile_id=profile.id if profile else None,
             store_code_snapshot=store_code,
             payment_mode=profile.mode if profile else None,
-            mchid_snapshot=profile.mchid if profile else None,
+            mchid_snapshot=(profile.sp_mchid if profile.mode == "partner" else profile.mchid)
+            if profile else None,
             sub_mchid_snapshot=profile.sub_mchid if profile else None,
             order_no=now.strftime("PF%Y%m%d%H%M%S") + secrets.token_hex(5).upper(),
             idempotency_key=idempotency_key,
@@ -343,10 +352,23 @@ class PlatformCommerceService:
             expires_at=now + timedelta(minutes=15),
         )
         self.session.add(row)
+        tenant_id = entry.binding.tenant_id
+        consumer_id = consumer.id
         try:
             await self.session.commit()
         except IntegrityError as error:
             await self.session.rollback()
+            existing = await self.session.scalar(select(DirectOrder).where(
+                DirectOrder.tenant_id == tenant_id,
+                DirectOrder.idempotency_key == idempotency_key,
+            ))
+            if existing is not None and (
+                existing.platform_consumer_id == consumer_id
+                and existing.product_id == product_id
+                and existing.store_code_snapshot == store_code
+                and existing.quantity == quantity
+            ):
+                return cast(DirectOrder, existing)
             raise DirectCommerceError("order_conflict", "订单重复，请刷新", 409) from error
         await self.session.refresh(row)
         return row
@@ -377,6 +399,9 @@ class PlatformCommerceService:
         entry = await self.resolve(store_code)
         await self.require_tradable(entry)
         order = await self.order(store_code, consumer.id, order_id)
+        order = await DirectCommerceService(self.session, self.settings)._lock_order(
+            order.tenant_id, order.id
+        )
         if order.status == "paid":
             voucher = await self._voucher_for_order(order.id)
             code = self._decrypt_code(voucher) if voucher else None
@@ -384,14 +409,27 @@ class PlatformCommerceService:
         if order.status != "payment_pending":
             raise DirectCommerceError("order_not_payable", "订单当前不能支付", 409)
         if _aware(order.expires_at) <= utcnow():
-            order.status = "expired"
-            await self._restore_stock(order)
-            await self.session.commit()
+            closed = await DirectCommerceService(
+                self.session, self.settings, http_client=self.http_client
+            ).expire_order(order)
+            if not closed:
+                raise DirectCommerceError(
+                    "payment_confirmation_pending", "正在核对支付结果，请稍后查看订单", 409
+                )
             raise DirectCommerceError("order_expired", "订单已超时，请重新下单", 409)
         if entry.profile is None:
             raise DirectCommerceError("payment_profile_required", "门店支付档案未配置", 409)
         connection = await self._profile_connection(entry.profile)
         route = self._payment_route(entry, connection)
+        if (
+            order.payment_profile_id != entry.profile.id
+            or order.payment_mode != entry.profile.mode
+            or order.mchid_snapshot != route.merchant_id
+            or order.sub_mchid_snapshot != route.sub_mchid
+        ):
+            raise DirectCommerceError(
+                "payment_route_changed", "门店收款配置已变更，请联系客服处理原订单", 409
+            )
         if connection.mode == ConnectionMode.MOCK.value:
             voucher_code = await self._mark_paid(
                 order, transaction_id="MOCK" + secrets.token_hex(10).upper()
@@ -533,8 +571,6 @@ class PlatformCommerceService:
             or total != order.total_amount
         ):
             raise DirectCommerceError("payment_identity_mismatch", "支付通知身份或金额不匹配", 400)
-        if order.status == "paid":
-            return
         transaction_id = transaction.get("transaction_id")
         if not isinstance(transaction_id, str) or not transaction_id:
             raise DirectCommerceError("transaction_id_missing", "支付通知缺少交易号", 400)
@@ -545,11 +581,12 @@ class PlatformCommerceService:
         self, store_code: str, consumer_id: str, order_id: str
     ) -> tuple[DirectVoucher, str]:
         order = await self.order(store_code, consumer_id, order_id)
-        if order.status != "paid":
+        if order.status not in {"paid", "partially_refunded"}:
             raise DirectCommerceError("paid_order_required", "订单尚未支付", 409)
         voucher = await self._voucher_for_order(order.id)
         if voucher is None:
             raise DirectCommerceError("voucher_not_found", "订单券码尚未生成", 404)
+        await DirectCommerceService(self.session, self.settings)._require_usable_voucher(order)
         return voucher, self._decrypt_code(voucher)
 
     async def create_appointment(
@@ -560,8 +597,11 @@ class PlatformCommerceService:
         values: dict[str, Any],
     ) -> DirectAppointment:
         order = await self.order(store_code, consumer.id, order_id)
-        if order.status != "paid":
+        service = DirectCommerceService(self.session, self.settings)
+        order = await service._lock_order(order.tenant_id, order.id)
+        if order.status not in {"paid", "partially_refunded"}:
             raise DirectCommerceError("paid_order_required", "订单支付后才能预约", 409)
+        await service._require_usable_voucher(order)
         starts_at = values["starts_at"]
         if _aware(starts_at) <= utcnow():
             raise DirectCommerceError("appointment_in_past", "预约时间必须晚于当前时间")
@@ -604,9 +644,27 @@ class PlatformCommerceService:
         )
         if order is None:
             raise DirectCommerceError("order_not_found", "退款通知对应订单不存在", 404)
+        await self.session.refresh(refund)
+        amount = transaction.get("amount")
+        if (
+            transaction.get("mchid") != order.mchid_snapshot
+            or transaction.get("sub_mchid") != order.sub_mchid_snapshot
+            or transaction.get("out_trade_no") != order.order_no
+            or transaction.get("transaction_id") != order.transaction_id
+            or not isinstance(amount, dict)
+            or amount.get("refund") != refund.amount
+            or amount.get("total") != order.total_amount
+        ):
+            raise DirectCommerceError("refund_identity_mismatch", "退款通知身份或金额不匹配", 400)
+        if refund.status == "success":
+            return
         refund_id = transaction.get("refund_id")
-        if isinstance(refund_id, str) and refund_id and not refund.wechat_refund_id:
+        if not isinstance(refund_id, str) or not refund_id:
+            raise DirectCommerceError("refund_identity_mismatch", "退款通知缺少退款单号", 400)
+        if not refund.wechat_refund_id:
             refund.wechat_refund_id = refund_id
+        elif refund_id != refund.wechat_refund_id:
+            raise DirectCommerceError("refund_identity_mismatch", "退款通知单号不匹配", 400)
         refund_status = transaction.get("refund_status")
         if refund_status == "SUCCESS":
             if refund.status != "success":
@@ -713,32 +771,9 @@ class PlatformCommerceService:
         return self._required(value, "openid", "顾客 openid")
 
     async def _mark_paid(self, order: DirectOrder, transaction_id: str) -> str:
-        order.status = "paid"
-        order.paid_amount = order.total_amount
-        order.transaction_id = transaction_id
-        order.paid_at = utcnow()
-        await self.session.execute(
-            update(DirectProduct)
-            .where(DirectProduct.id == order.product_id)
-            .values(sold_count=DirectProduct.sold_count + order.quantity)
+        return await DirectCommerceService(self.session, self.settings)._mark_paid(
+            order, transaction_id
         )
-        voucher = await self._voucher_for_order(order.id)
-        if voucher is not None:
-            return self._decrypt_code(voucher)
-        code = "".join(secrets.choice("0123456789") for _ in range(12))
-        self.session.add(
-            DirectVoucher(
-                tenant_id=order.tenant_id,
-                order_id=order.id,
-                code_hash=_hash(code),
-                code_ciphertext=encrypt_secret_bundle(
-                    {"code": code}, self.settings.encryption_key
-                ),
-                code_masked=code[:4] + "****" + code[-4:],
-                valid_until=utcnow() + timedelta(days=365),
-            )
-        )
-        return code
 
     async def _restore_stock(self, order: DirectOrder) -> None:
         await self.session.execute(
