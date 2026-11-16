@@ -1,0 +1,17 @@
+.applyment-editor .ant-steps { margin: 8px 0 24px; }
+.applyment-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; }
+.applyment-step { padding: 8px 0 20px; }
+.applyment-step[hidden] { display: none; }
+.applyment-upload { border: 1px solid #e7eaf0; border-radius: 10px; margin: 12px 0; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+.applyment-upload > div:first-child { flex: 1 1 260px; min-width: 0; }
+.applyment-upload > .ant-alert { flex-basis: 100%; }
+.applyment-photo-hint { max-width: 600px; margin: 8px 0 0; color: #627d98; font-size: 13px; line-height: 1.6; }
+.applyment-upload strong { margin-right: 12px; }
+.applyment-file-label { display: inline-flex; align-items: center; position: relative; border: 1px solid #c9d5e9; border-radius: 6px; padding: 5px 12px; cursor: pointer; color: #2456a6; background: white; }
+.applyment-file-label input { position: absolute; width: 100%; height: 100%; inset: 0; opacity: 0; cursor: pointer; }
+.applyment-actions { border-top: 1px solid #e7eaf0; padding-top: 20px; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.applyment-sign { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 20px; margin-top: 16px; background: #f4f8ff; border-radius: 12px; }
+.applyment-step details { margin: 20px 0; }
+.applyment-step summary { cursor: pointer; color: #2456a6; }
+@media (max-width: 800px) { .applyment-grid { grid-template-columns: 1fr; } .applyment-upload, .applyment-actions, .applyment-sign { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 800px) { .applyment-upload > div:first-child { flex-basis: auto; } }

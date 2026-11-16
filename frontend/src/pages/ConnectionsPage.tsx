@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, Button, Card, Form, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd'
-import { Plus, RefreshCw } from 'lucide-react'
+import { Plus, RefreshCw, Settings } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthProvider'
@@ -17,91 +17,154 @@ type Connection = {
   mock_scenario: string
 }
 
+type ConnectionFormValues = {
+  capability: string
+  mode: string
+  app_id?: string
+  merchant_id?: string
+  mock_scenario: string
+  app_secret?: string
+  access_token?: string
+  callback_token?: string
+  encoding_aes_key?: string
+  district_id?: string
+  merchant_private_key_pem?: string
+  merchant_serial_no?: string
+  api_v3_key?: string
+  wechatpay_public_key_pem?: string
+  wechatpay_public_key_id?: string
+}
+
 const capabilityLabel: Record<string, string> = {
   local_life: '微信小店本地生活（兼容）',
   service_poi: '腾讯位置／服务 POI',
   mini_program_commerce: '独立小程序交易与支付',
 }
 
+const statusLabel: Record<string, string> = {
+  authorized: '已授权',
+  disconnected: '待验证',
+  connected: '已连接',
+  error: '异常',
+}
+
+function secretsFrom(values: ConnectionFormValues) {
+  const source: Record<string, string | undefined> = {
+    app_secret: values.app_secret,
+    access_token: values.access_token,
+    callback_token: values.callback_token,
+    encoding_aes_key: values.encoding_aes_key,
+    district_id: values.district_id,
+    merchant_private_key_pem: values.merchant_private_key_pem,
+    merchant_serial_no: values.merchant_serial_no,
+    api_v3_key: values.api_v3_key,
+    wechatpay_public_key_pem: values.wechatpay_public_key_pem,
+    wechatpay_public_key_id: values.wechatpay_public_key_id,
+  }
+  return Object.fromEntries(Object.entries(source).filter(([, value]) => value?.trim()))
+}
+
 export function ConnectionsPage() {
   const { tenant } = useAuth()
   const client = useQueryClient()
   const [open, setOpen] = useState(false)
-  const [form] = Form.useForm()
+  const [editing, setEditing] = useState<Connection | null>(null)
+  const [form] = Form.useForm<ConnectionFormValues>()
   const capability = Form.useWatch('capability', form)
   const mode = Form.useWatch('mode', form)
   const query = useQuery({ queryKey: ['connections', tenant?.id], queryFn: api.connections, enabled: Boolean(tenant) })
   const mutation = useMutation({
-    mutationFn: api.createConnection,
+    mutationFn: (values: ConnectionFormValues) => {
+      const payload = {
+        ...values,
+        secrets: secretsFrom(values),
+        app_secret: undefined,
+        access_token: undefined,
+        callback_token: undefined,
+        encoding_aes_key: undefined,
+        district_id: undefined,
+        merchant_private_key_pem: undefined,
+        merchant_serial_no: undefined,
+        api_v3_key: undefined,
+        wechatpay_public_key_pem: undefined,
+        wechatpay_public_key_id: undefined,
+      }
+      return editing
+        ? api.updateConnection(editing.id, payload)
+        : api.createConnection(payload)
+    },
     onSuccess: async () => {
       setOpen(false)
+      setEditing(null)
       form.resetFields()
       await client.invalidateQueries({ queryKey: ['connections', tenant?.id] })
     },
   })
   const rows = (query.data ?? []) as Connection[]
 
+  const openCreate = () => {
+    setEditing(null)
+    form.resetFields()
+    form.setFieldsValue({ mode: 'mock', mock_scenario: 'healthy' })
+    setOpen(true)
+  }
+  const openEdit = (row: Connection) => {
+    setEditing(row)
+    form.resetFields()
+    form.setFieldsValue({
+      capability: row.capability,
+      mode: row.mode,
+      app_id: row.app_id ?? undefined,
+      merchant_id: row.merchant_id ?? undefined,
+      mock_scenario: row.mock_scenario,
+    })
+    setOpen(true)
+  }
+
   return <section className="workspace-page">
     <div className="page-heading">
-      <div><Typography.Text className="page-kicker">租户微信能力</Typography.Text><Typography.Title level={2}>微信连接</Typography.Title><Typography.Paragraph>真实凭据仅加密保存在服务端，不会返回浏览器。</Typography.Paragraph></div>
-      <Space><Button icon={<RefreshCw size={15} />} onClick={() => void query.refetch()}>刷新</Button><Button type="primary" icon={<Plus size={15} />} onClick={() => setOpen(true)}>新建连接</Button></Space>
+      <div><Typography.Text className="page-kicker">租户微信能力</Typography.Text><Typography.Title level={2}>微信连接</Typography.Title><Typography.Paragraph>真实凭据仅加密保存在服务端，不会返回浏览器；留空的密钥不会覆盖原配置。</Typography.Paragraph></div>
+      <Space><Button icon={<RefreshCw size={15} />} onClick={() => void query.refetch()}>刷新</Button><Button type="primary" icon={<Plus size={15} />} onClick={openCreate}>新建连接</Button></Space>
     </div>
     <Card className="workspace-table-card" variant="borderless"><WorkspaceState loading={query.isPending} error={query.error} empty={!rows.length}>
       <Table<Connection> rowKey="id" dataSource={rows} columns={[
         { title: '能力', dataIndex: 'capability', render: value => capabilityLabel[value] || value },
-        { title: '模式', dataIndex: 'mode', render: value => <Tag>{value}</Tag> },
-        { title: '状态', dataIndex: 'status' },
+        { title: '模式', dataIndex: 'mode', render: value => <Tag color={value === 'live' ? 'blue' : 'default'}>{value === 'live' ? '真实微信' : '模拟验收'}</Tag> },
+        { title: '状态', dataIndex: 'status', render: value => statusLabel[value] || value },
         { title: 'AppID', dataIndex: 'app_id', render: value => value || '-' },
         { title: '商户号', dataIndex: 'merchant_id', render: value => value || '-' },
-        { title: 'Mock 场景', dataIndex: 'mock_scenario' },
+        { title: '操作', key: 'action', render: (_, row) => <Button icon={<Settings size={14} />} onClick={() => openEdit(row)}>配置</Button> },
       ]} />
     </WorkspaceState></Card>
-    <Modal title="新建微信连接" open={open} onCancel={() => setOpen(false)} footer={null}>
-      <Form form={form} layout="vertical" initialValues={{ mode: 'mock', mock_scenario: 'healthy' }} onFinish={values => mutation.mutate({
-        capability: values.capability,
-        mode: values.mode,
-        app_id: values.app_id,
-        merchant_id: values.merchant_id,
-        mock_scenario: values.mock_scenario,
-        secrets: {
-          app_secret: values.app_secret,
-          access_token: values.access_token,
-          callback_token: values.callback_token,
-          encoding_aes_key: values.encoding_aes_key,
-          merchant_private_key_pem: values.merchant_private_key_pem,
-          merchant_serial_no: values.merchant_serial_no,
-          api_v3_key: values.api_v3_key,
-          wechatpay_public_key_pem: values.wechatpay_public_key_pem,
-          wechatpay_public_key_id: values.wechatpay_public_key_id,
-          notify_url: values.notify_url,
-        },
-      })}>
-        <Form.Item name="capability" label="能力" rules={[{ required: true }]}><Select options={[
+    <Modal title={editing ? `配置${capabilityLabel[editing.capability] || '微信连接'}` : '新建微信连接'} open={open} onCancel={() => setOpen(false)} footer={null} destroyOnHidden>
+      <Form form={form} layout="vertical" onFinish={values => mutation.mutate(values)}>
+        <Form.Item name="capability" label="能力" rules={[{ required: true }]}><Select disabled={Boolean(editing)} options={[
           { value: 'mini_program_commerce', label: '独立小程序交易与支付（推荐）' },
           { value: 'service_poi', label: '腾讯位置／服务 POI' },
           { value: 'local_life', label: '微信团购本地生活' },
         ]} /></Form.Item>
-        <Form.Item name="mode" label="模式"><Select options={[{ value: 'mock', label: '模拟验收' }, { value: 'live', label: '真实微信' }]} /></Form.Item>
-        {mode === 'live' && <Alert type="warning" showIcon message="真实凭据不要通过聊天发送，请直接粘贴到这里。" style={{ marginBottom: 16 }} />}
+        <Form.Item name="mode" label="模式" rules={[{ required: true }]}><Select options={[{ value: 'mock', label: '模拟验收' }, { value: 'live', label: '真实微信' }]} /></Form.Item>
+        {mode === 'live' && <Alert type="warning" showIcon message="真实凭据不要通过聊天发送，请直接粘贴到这里。保存后状态显示“待验证”属于正常情况。" style={{ marginBottom: 16 }} />}
         <Form.Item name="app_id" label="AppID" rules={mode === 'live' ? [{ required: true }] : []}><Input /></Form.Item>
-        <Form.Item name="merchant_id" label="微信支付商户号"><Input /></Form.Item>
-        <Form.Item name="app_secret" label="AppSecret"><Input.Password /></Form.Item>
+        <Form.Item name="merchant_id" label={capability === 'mini_program_commerce' ? '支付服务商商户号（sp_mchid）' : '微信支付商户号'}><Input /></Form.Item>
+        <Form.Item name="app_secret" label={editing ? 'AppSecret（不修改请留空）' : 'AppSecret'}><Input.Password /></Form.Item>
         {capability === 'mini_program_commerce' && <>
           <Form.Item name="merchant_serial_no" label="商户 API 证书序列号"><Input /></Form.Item>
           <Form.Item name="merchant_private_key_pem" label="商户 API 私钥 PEM"><Input.TextArea rows={4} /></Form.Item>
           <Form.Item name="api_v3_key" label="APIv3 密钥（32 字节）"><Input.Password /></Form.Item>
           <Form.Item name="wechatpay_public_key_id" label="微信支付公钥 ID"><Input /></Form.Item>
           <Form.Item name="wechatpay_public_key_pem" label="微信支付公钥 PEM"><Input.TextArea rows={4} /></Form.Item>
-          <Form.Item name="notify_url" label="支付通知地址"><Input placeholder="https://你的域名/api/v1/public/wechatpay/notify/小程序登记ID" /></Form.Item>
+          <Alert type="info" showIcon message="支付通知地址由服务器按每个商户档案自动生成，无需手工填写。" style={{ marginBottom: 16 }} />
         </>}
         {capability !== 'mini_program_commerce' && <>
-          <Form.Item name="access_token" label="服务端 Access Token"><Input.Password /></Form.Item>
+          <Form.Item name="access_token" label="固定 Access Token（一般留空，优先使用 AppSecret 自动获取）"><Input.Password /></Form.Item>
+          {capability === 'service_poi' && <Form.Item name="district_id" label="行政区划 ID（获取 POI 权限后再填）"><Input /></Form.Item>}
           <Form.Item name="callback_token" label="回调 Token"><Input.Password /></Form.Item>
           <Form.Item name="encoding_aes_key" label="回调 EncodingAESKey"><Input.Password /></Form.Item>
         </>}
-        <Form.Item name="mock_scenario" label="模拟场景"><Select options={['healthy', 'rate_limit', 'timeout', 'server_error', 'invalid', 'permission_denied'].map(value => ({ value, label: value }))} /></Form.Item>
+        {mode === 'mock' && <Form.Item name="mock_scenario" label="模拟场景"><Select options={['healthy', 'rate_limit', 'timeout', 'server_error', 'invalid', 'permission_denied'].map(value => ({ value, label: value }))} /></Form.Item>}
         {mutation.isError && <p className="form-error">{mutation.error.message}</p>}
-        <Button block type="primary" htmlType="submit" loading={mutation.isPending}>创建连接</Button>
+        <Button block type="primary" htmlType="submit" loading={mutation.isPending}>{editing ? '保存配置' : '创建连接'}</Button>
       </Form>
     </Modal>
   </section>

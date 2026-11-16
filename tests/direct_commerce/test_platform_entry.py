@@ -5,6 +5,8 @@ from httpx import AsyncClient
 from tests.direct_commerce.test_direct_commerce_routes import ready_mini_program
 from tests.onboarding.test_onboarding_routes import create_store, login
 
+from poi_admin.direct_commerce.platform_service import PlatformCommerceService
+
 
 async def _commerce_connection_id(client: AsyncClient, tenant_id: str) -> str:
     response = await client.get(
@@ -294,6 +296,8 @@ async def test_public_store_list_exposes_only_public_entry_fields(client: AsyncC
     assert entry["business_status"] in {"open", "preparing", "closed"}
     assert entry["discoverable"] is True
     assert entry["tradable"] is True
+    assert "latitude" in entry
+    assert "longitude" in entry
     assert "tenant_id" not in entry
     assert "payment_profile" not in entry
 
@@ -422,3 +426,14 @@ async def test_payment_route_rejects_mismatched_merchant(client: AsyncClient) ->
     )
     assert paid.status_code == 409
     assert paid.json()["detail"]["code"] == "payment_profile_mismatch"
+
+
+def test_platform_payment_callback_is_scoped_to_payment_profile(test_settings) -> None:
+    settings = test_settings.model_copy(
+        update={"public_base_url": "https://poi.zzybyzz6369.my.id/"}
+    )
+    service = PlatformCommerceService(None, settings)  # type: ignore[arg-type]
+    assert service._payment_notify_url("profile-123", {}) == (
+        "https://poi.zzybyzz6369.my.id"
+        "/api/v1/public/platform/wechatpay/notify/profile-123"
+    )

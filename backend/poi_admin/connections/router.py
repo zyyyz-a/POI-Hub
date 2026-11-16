@@ -13,7 +13,7 @@ from poi_admin.core.dependencies import AuthContext, require_csrf, require_permi
 from poi_admin.core.permissions import Permission
 
 from .models import WeChatConnection
-from .schemas import ConnectionCreateRequest, ConnectionResponse
+from .schemas import ConnectionCreateRequest, ConnectionResponse, ConnectionUpdateRequest
 from .service import ConnectionService, ConnectionServiceError
 
 connection_router = APIRouter(prefix="/connections", tags=["connections"])
@@ -91,6 +91,35 @@ async def update_connection_secrets(
     try:
         connection = await _service(request, session).update_secrets(
             context.tenant.id, connection_id, payload
+        )
+    except ConnectionServiceError as error:
+        _raise(error)
+    return _response(connection)
+
+
+@connection_router.patch("/{connection_id}", response_model=ConnectionResponse)
+async def update_connection(
+    connection_id: str,
+    payload: ConnectionUpdateRequest,
+    request: Request,
+    context: Annotated[AuthContext, Depends(require_permission(Permission.MANAGE_CONNECTIONS))],
+    csrf_context: Annotated[AuthContext, Depends(require_csrf)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ConnectionResponse:
+    del csrf_context
+    if context.tenant is None:
+        from poi_admin.core.dependencies import auth_error
+
+        raise auth_error("tenant_required", "请先选择租户", 400)
+    try:
+        connection = await _service(request, session).update(
+            context.tenant.id,
+            connection_id,
+            mode=payload.mode,
+            app_id=payload.app_id,
+            merchant_id=payload.merchant_id,
+            secrets=payload.secrets,
+            mock_scenario=payload.mock_scenario,
         )
     except ConnectionServiceError as error:
         _raise(error)

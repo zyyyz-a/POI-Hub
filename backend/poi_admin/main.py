@@ -7,6 +7,8 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from .assistant.router import assistant_router
+from .assistant.service import DeepSeekAssistant
 from .audit.router import audit_router
 from .billing.router import billing_router
 from .connections.router import connection_router
@@ -27,6 +29,7 @@ from .identity.router import identity_router
 from .local_life.router_accounting import accounting_router
 from .local_life.router_orders import order_router
 from .local_life.router_products import product_router
+from .merchant_applyments.router import applyment_router
 from .onboarding.router import onboarding_router
 from .operations.router import operation_router
 from .operations.service import IdempotencyConflictError
@@ -49,6 +52,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     application.state.db = database
     application.state.http_client = http_client
     application.state.license = load_license(settings)
+    application.state.assistant = DeepSeekAssistant(settings)
     try:
         yield
     finally:
@@ -99,6 +103,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(webhook_events_router, prefix="/api/v1")
     application.include_router(audit_router, prefix="/api/v1")
     application.include_router(onboarding_router, prefix="/api/v1")
+    application.include_router(applyment_router, prefix="/api/v1")
+    application.include_router(assistant_router, prefix="/api/v1")
     application.include_router(direct_commerce_router, prefix="/api/v1")
     application.include_router(consumer_router, prefix="/api/v1")
     application.include_router(platform_router, prefix="/api/v1")

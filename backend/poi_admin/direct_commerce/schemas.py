@@ -320,6 +320,8 @@ class PublicStoreSummary(BaseModel):
     city: str | None
     district: str | None
     address: str
+    latitude: float | None
+    longitude: float | None
     cover_image: str | None
     logo: str | None
     business_status: str

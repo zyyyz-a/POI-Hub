@@ -134,7 +134,59 @@ class ConnectionService:
         connection = await self.get(tenant_id, connection_id)
         if connection is None:
             raise ConnectionServiceError("connection_not_found", "连接不存在", 404)
-        connection.encrypted_secrets = encrypt_secret_bundle(secrets, self.settings.encryption_key)
+        current = (
+            decrypt_secret_bundle(connection.encrypted_secrets, self.settings.encryption_key)
+            if connection.encrypted_secrets
+            else {}
+        )
+        current.update(self._non_empty_secrets(secrets))
+        connection.encrypted_secrets = encrypt_secret_bundle(current, self.settings.encryption_key)
+        await self.session.commit()
+        await self.session.refresh(connection)
+        return connection
+
+    async def update(
+        self,
+        tenant_id: str,
+        connection_id: str,
+        *,
+        mode: ConnectionMode | None = None,
+        app_id: str | None = None,
+        merchant_id: str | None = None,
+        secrets: dict[str, str] | None = None,
+        mock_scenario: str | None = None,
+    ) -> WeChatConnection:
+        connection = await self.get(tenant_id, connection_id)
+        if connection is None:
+            raise ConnectionServiceError("connection_not_found", "连接不存在", 404)
+        next_mode = mode.value if mode is not None else connection.mode
+        next_app_id = app_id.strip() if isinstance(app_id, str) else connection.app_id
+        if next_mode == ConnectionMode.LIVE.value and not next_app_id:
+            raise ConnectionServiceError("app_id_required", "真实连接必须提供 AppID", 422)
+        connection.mode = next_mode
+        connection.app_id = next_app_id or None
+        if merchant_id is not None:
+            connection.merchant_id = merchant_id.strip() or None
+        if mock_scenario is not None:
+            connection.mock_scenario = mock_scenario
+        if secrets:
+            current = (
+                decrypt_secret_bundle(connection.encrypted_secrets, self.settings.encryption_key)
+                if connection.encrypted_secrets
+                else {}
+            )
+            current.update(self._non_empty_secrets(secrets))
+            if current:
+                connection.encrypted_secrets = encrypt_secret_bundle(
+                    current, self.settings.encryption_key
+                )
+        connection.status = (
+            AuthorizationState.AUTHORIZED.value
+            if next_mode == ConnectionMode.MOCK.value
+            else AuthorizationState.DISCONNECTED.value
+        )
+        connection.last_error = None
+        connection.last_health_check_at = None
         await self.session.commit()
         await self.session.refresh(connection)
         return connection
@@ -206,6 +258,14 @@ class ConnectionService:
             last_health_check_at=connection.last_health_check_at,
             last_error=connection.last_error,
         )
+
+    @staticmethod
+    def _non_empty_secrets(secrets: dict[str, str]) -> dict[str, str]:
+        return {
+            key: value.strip()
+            for key, value in secrets.items()
+            if isinstance(value, str) and value.strip()
+        }
 
 
 __all__ = ["ConnectionPublic", "ConnectionService", "ConnectionServiceError"]

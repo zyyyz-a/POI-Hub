@@ -740,6 +740,8 @@ async def platform_list_public_stores(
                 city=store.city,
                 district=store.district,
                 address=store.address,
+                latitude=store.latitude,
+                longitude=store.longitude,
                 cover_image=store.cover_image,
                 logo=store.logo,
                 business_status=business_status,

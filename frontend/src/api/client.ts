@@ -1,3 +1,5 @@
+import { normalizeApplymentFields } from '../common/settlementAccount'
+
 export type Role = 'platform_admin' | 'tenant_admin' | 'operator' | 'verifier' | 'auditor'
 
 export interface User {
@@ -453,6 +455,39 @@ export class ApiError extends Error {
   }
 }
 
+export interface AssistantMessage { role: 'user' | 'assistant'; content: string }
+export interface AssistantStatus { configured: boolean; model: string; provider: string }
+
+export interface MerchantApplymentRecord {
+  id: string
+  store_id: string
+  connection_id: string
+  business_code: string
+  sp_mchid: string
+  platform_app_id: string
+  state: string
+  applyment_id: string | null
+  sub_mchid: string | null
+  last_error_code: string | null
+  last_request_id: string | null
+  version: number
+  updated_at: string
+  editable: boolean
+  fields?: Record<string, string | boolean> | null
+  attachments: Array<{ kind: string; size_bytes: number }>
+  issues: string[]
+  audit_details: string[]
+  sign_url?: string | null
+}
+
+export interface ApplymentCapabilities {
+  real_submission_enabled: boolean
+  subject_type: string
+  administrator_type: string
+  identity_document_type: string
+  max_image_bytes: number
+}
+
 let csrfToken: string | undefined
 
 export function setCsrfToken(value: string | undefined) {
@@ -499,6 +534,31 @@ function stringValue(value: unknown): string | undefined {
 }
 
 export const api = {
+  assistantStatus: () => request<AssistantStatus>('/api/v1/assistant/status'),
+  saveAssistantKey: (key: string) => request<AssistantStatus>('/api/v1/assistant/settings', { method: 'PUT', body: JSON.stringify({ api_key: key }) }),
+  assistantChat: (messages: AssistantMessage[], page: string, field: string, signal?: AbortSignal) => request<{ reply: string; model: string }>('/api/v1/assistant/chat', { method: 'POST', signal, body: JSON.stringify({ messages, page, field, consent: true }) }),
+  merchantApplyments: () => request<MerchantApplymentRecord[]>('/api/v1/merchant-applyments'),
+  applymentCapabilities: () => request<ApplymentCapabilities>('/api/v1/merchant-applyments/capabilities'),
+  createMerchantApplyment: (storeId: string, connectionId: string) => request<MerchantApplymentRecord>('/api/v1/merchant-applyments', {
+    method: 'POST', body: JSON.stringify({ store_id: storeId, connection_id: connectionId }),
+  }),
+  merchantApplyment: (id: string) => request<MerchantApplymentRecord>(`/api/v1/merchant-applyments/${id}`),
+  saveMerchantApplyment: (id: string, version: number, fields: Record<string, unknown>) => request<MerchantApplymentRecord>(`/api/v1/merchant-applyments/${id}`, {
+    method: 'PUT', body: JSON.stringify({ version, fields: normalizeApplymentFields(fields) }),
+  }),
+  uploadApplymentAttachment: (id: string, version: number, kind: string, file: File) => request<MerchantApplymentRecord>(`/api/v1/merchant-applyments/${id}/attachments/${kind}?version=${version}`, {
+    method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file,
+  }),
+  removeApplymentAttachment: (id: string, version: number, kind: string) => request<MerchantApplymentRecord>(`/api/v1/merchant-applyments/${id}/attachments/${kind}?version=${version}`, { method: 'DELETE' }),
+  submitMerchantApplyment: (id: string, version: number) => request<MerchantApplymentRecord>(`/api/v1/merchant-applyments/${id}/submit`, {
+    method: 'POST', body: JSON.stringify({ version, merchant_authorized: true, confirm_real_submission: true }),
+  }),
+  syncMerchantApplyment: (id: string, version: number) => request<MerchantApplymentRecord>(`/api/v1/merchant-applyments/${id}/sync`, {
+    method: 'POST', body: JSON.stringify({ version }),
+  }),
+  linkApplymentPayment: (id: string, version: number) => request<{ payment_profile_id: string; message: string }>(`/api/v1/merchant-applyments/${id}/link-payment`, {
+    method: 'POST', body: JSON.stringify({ version }),
+  }),
   me: () => request<MeResponse>('/api/v1/me'),
   csrf: async () => {
     const result = await request<{ csrf_token: string }>('/api/v1/auth/csrf')
@@ -563,6 +623,7 @@ export const api = {
   retryOperationsBatch: (operationIds: string[]) => request<BatchRetryResponse>('/api/v1/operations/retry-batch', { method: 'POST', body: JSON.stringify({ operation_ids: operationIds }) }),
   retryWebhook: (eventId: string) => request<unknown>('/api/v1/webhook-events/' + eventId + '/retry', { method: 'POST', body: '{}' }),
   createConnection: (payload: Record<string, unknown>) => request<unknown>('/api/v1/connections', { method: 'POST', body: JSON.stringify(payload) }),
+  updateConnection: (connectionId: string, payload: Record<string, unknown>) => request<unknown>('/api/v1/connections/' + connectionId, { method: 'PATCH', body: JSON.stringify(payload) }),
   inviteMember: (payload: Record<string, unknown>) => request<unknown>('/api/v1/members/invitations', { method: 'POST', body: JSON.stringify(payload) }),
   onboardingCases: () => request<OnboardingCaseRecord[]>('/api/v1/onboarding/cases'),
   createOnboardingCase: (payload: Record<string, unknown>) => request<OnboardingCaseRecord>('/api/v1/onboarding/cases', { method: 'POST', body: JSON.stringify(payload) }),

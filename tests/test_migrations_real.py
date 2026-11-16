@@ -81,13 +81,15 @@ def test_fresh_database_can_run_real_alembic_upgrade_and_is_idempotent(tmp_path:
             "billing_adjustments",
             "direct_reconciliation_batches",
             "direct_reconciliation_items",
+            "merchant_applyments",
+            "merchant_applyment_attachments",
         }
         assert expected <= tables
         with engine.connect() as connection:
             revision = connection.execute(
                 text("select version_num from alembic_version")
             ).scalar_one()
-            assert revision == "0021_platform_products"
+            assert revision == "0022_merchant_applyments"
         assert any(
             index["name"] == "ix_operation_claimable"
             for index in inspector.get_indexes("integration_operations")
@@ -98,5 +100,9 @@ def test_fresh_database_can_run_real_alembic_upgrade_and_is_idempotent(tmp_path:
         )
         constraints = inspector.get_unique_constraints("local_orders")
         assert any(item["name"] == "uq_local_order_external_id" for item in constraints)
+        application_columns = {column["name"] for column in inspector.get_columns("merchant_applyments")}
+        assert {"encrypted_fields", "encrypted_result", "platform_app_id", "version"} <= application_columns
+        constraints = inspector.get_unique_constraints("merchant_applyments")
+        assert any(item["name"] == "uq_merchant_applyment_store" for item in constraints)
     finally:
         engine.dispose()

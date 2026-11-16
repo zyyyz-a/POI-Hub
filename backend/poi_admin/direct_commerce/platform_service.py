@@ -453,7 +453,7 @@ class PlatformCommerceService:
                 description=description or order.product_name,
                 amount=order.total_amount,
                 openid=self._openid(consumer),
-                notify_url=self._required(bundle, "notify_url", "支付通知地址"),
+                notify_url=self._payment_notify_url(entry.profile.id, bundle),
                 sub_mchid=route.sub_mchid,
                 sp_mchid=route.sp_mchid,
             )
@@ -746,6 +746,15 @@ class PlatformCommerceService:
             raise DirectCommerceError(
                 "credentials_invalid", "小程序交易凭据无法解密", 500
             ) from error
+
+    def _payment_notify_url(self, payment_profile_id: str, bundle: dict[str, Any]) -> str:
+        if self.settings.public_base_url.strip():
+            return (
+                self.settings.public_base_url.rstrip("/")
+                + "/api/v1/public/platform/wechatpay/notify/"
+                + payment_profile_id
+            )
+        return self._required(bundle, "notify_url", "支付通知地址")
 
     @staticmethod
     def _required(bundle: dict[str, Any], key: str, label: str) -> str:

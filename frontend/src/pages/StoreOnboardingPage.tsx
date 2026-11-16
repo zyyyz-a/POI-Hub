@@ -108,6 +108,7 @@ export function StoreOnboardingPage() {
   const completed = stepItems.filter(item => stepDone(item.key)).length
 
   return <section className="workspace-page">
+    <Alert type="info" showIcon message="还没有微信支付子商户号？" description={<a href="/merchant-applyments">前往子商户入驻，填写个体工商户资料并跟踪审核签约进度</a>} />
     <div className="page-heading"><div><Typography.Text className="page-kicker">门店接入向导</Typography.Text><Typography.Title level={2}>按步骤接入一家门店</Typography.Title><Typography.Paragraph>顾客端不能新增门店；门店由商家在后台按向导接入，逐项检查后启用。</Typography.Paragraph></div></div>
     <Alert type="info" showIcon message="只允许平台管理员或对应商户管理员操作；顾客端只能识别已审核接入的门店。" />
 

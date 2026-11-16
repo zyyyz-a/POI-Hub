@@ -26,6 +26,7 @@ from poi_admin.local_life.models import (
     LocalVoucher,
     VoucherBill,
 )
+from poi_admin.merchant_applyments import models as _applyment_models  # noqa: F401,E402
 from poi_admin.onboarding import models as _onboarding_models  # noqa: F401,E402
 from poi_admin.operations import models as _operation_models  # noqa: F401,E402
 from poi_admin.stores.models import ServicePoi, Store, StorePoiMapping

@@ -58,3 +58,54 @@ async def test_connection_api_encrypts_and_never_returns_secrets(client: AsyncCl
         assert connection.tenant_id == tenant_id
         assert connection.encrypted_secrets is not None
         assert "must-not-leak" not in connection.encrypted_secrets
+
+
+@pytest.mark.asyncio
+async def test_connection_update_converts_mock_to_live_and_merges_secrets(
+    client: AsyncClient,
+) -> None:
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@example.com", "password": "correct-horse-battery-staple"},
+    )
+    database = client._transport.app.state.database  # type: ignore[attr-defined]
+    from poi_admin.identity.models import Tenant
+
+    async with database.session_factory() as session:
+        tenant = (await session.execute(select(Tenant).where(Tenant.slug == "demo"))).scalar_one()
+        tenant_id = tenant.id
+    headers = {"X-Tenant-ID": tenant_id, "X-CSRF-Token": login.cookies["poi_csrf"]}
+    created = await client.post(
+        "/api/v1/connections",
+        headers=headers,
+        json={
+            "capability": "service_poi",
+            "mode": "mock",
+            "secrets": {"callback_token": "keep-this"},
+        },
+    )
+    assert created.status_code == 201
+
+    updated = await client.patch(
+        f"/api/v1/connections/{created.json()['id']}",
+        headers=headers,
+        json={
+            "mode": "live",
+            "app_id": "wx-live",
+            "secrets": {"app_secret": "new-secret", "callback_token": ""},
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["mode"] == "live"
+    assert updated.json()["status"] == "disconnected"
+    assert "new-secret" not in updated.text
+
+    async with database.session_factory() as session:
+        connection = (
+            await session.execute(
+                select(WeChatConnection).where(WeChatConnection.id == created.json()["id"])
+            )
+        ).scalar_one()
+        assert connection.encrypted_secrets is not None
+        secrets = decrypt_secret_bundle(connection.encrypted_secrets, "test-encryption-key")
+        assert secrets == {"callback_token": "keep-this", "app_secret": "new-secret"}

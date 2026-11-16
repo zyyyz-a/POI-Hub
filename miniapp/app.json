@@ -20,6 +20,15 @@
     "backgroundColor": "#F6F7F9",
     "backgroundTextStyle": "dark"
   },
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于展示和排序您附近的入驻门店及优惠信息"
+    }
+  },
+  "requiredPrivateInfos": [
+    "getLocation"
+  ],
+  "lazyCodeLoading": "requiredComponents",
   "tabBar": {
     "color": "#6B7280",
     "selectedColor": "#1677FF",

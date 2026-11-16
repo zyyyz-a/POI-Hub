@@ -19,6 +19,16 @@ class ConnectionCreateRequest(BaseModel):
     ] = "healthy"
 
 
+class ConnectionUpdateRequest(BaseModel):
+    mode: ConnectionMode | None = None
+    app_id: str | None = Field(default=None, max_length=128)
+    merchant_id: str | None = Field(default=None, max_length=128)
+    secrets: dict[str, str] = Field(default_factory=dict)
+    mock_scenario: Literal[
+        "healthy", "rate_limit", "timeout", "server_error", "invalid", "permission_denied"
+    ] | None = None
+
+
 class ConnectionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -36,4 +46,4 @@ class ConnectionResponse(BaseModel):
     last_error: str | None
 
 
-__all__ = ["ConnectionCreateRequest", "ConnectionResponse"]
+__all__ = ["ConnectionCreateRequest", "ConnectionResponse", "ConnectionUpdateRequest"]

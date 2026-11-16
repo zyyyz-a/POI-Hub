@@ -58,6 +58,17 @@ class Settings(BaseSettings):
         default="https://api.weixin.qq.com",
         validation_alias=AliasChoices("WECHAT_API_BASE_URL", "wechat_api_base_url"),
     )
+    wechat_applyment_submit_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "WECHAT_APPLYMENT_SUBMIT_ENABLED", "wechat_applyment_submit_enabled"
+        ),
+    )
+    deepseek_config_path: Path = Field(default=DEFAULT_DATA_DIR / "assistant" / "deepseek.enc")
+    public_base_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("PUBLIC_BASE_URL", "public_base_url"),
+    )
     deployment_mode: Literal["appliance", "saas"] = Field(
         default="saas",
         validation_alias=AliasChoices("DEPLOYMENT_MODE", "deployment_mode"),
@@ -162,6 +173,20 @@ class Settings(BaseSettings):
             raise ValueError(
                 "WECHAT_API_BASE_URL must use the official WeChat HTTPS host outside local/test"
             )
+        if self.public_base_url:
+            parsed_public_url = urlparse(self.public_base_url)
+            if (
+                parsed_public_url.scheme not in {"http", "https"}
+                or not parsed_public_url.hostname
+                or parsed_public_url.username
+                or parsed_public_url.query
+                or parsed_public_url.fragment
+            ):
+                raise ValueError("PUBLIC_BASE_URL must be an absolute URL without credentials")
+            if self.environment in {"staging", "production"} and (
+                parsed_public_url.scheme != "https"
+            ):
+                raise ValueError("PUBLIC_BASE_URL must use HTTPS outside local/test")
         if self.deployment_mode == "saas" and self.license_mode != "off":
             raise ValueError(
                 "Central SaaS must use tenant subscription controls; "

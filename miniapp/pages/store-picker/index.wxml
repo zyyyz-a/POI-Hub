@@ -1,7 +1,11 @@
 <view class="page">
   <view class="card">
-    <input class="picker-search" value="{{keyword}}" bindinput="onKeyword" placeholder="搜索门店名称" confirm-type="search" />
-    <view class="btn btn-ghost btn-block" style="margin-top:16rpx" bindtap="scan">扫描门店二维码</view>
+    <view class="title">附近门店优惠</view>
+    <view class="muted" style="margin-top:8rpx">结合您的当前位置，展示附近入驻门店及优惠信息</view>
+    <view class="btn btn-primary btn-block" style="margin-top:20rpx" bindtap="locate">
+      {{locating ? '正在获取位置…' : (located ? '重新定位并按距离排序' : '查看我附近的门店')}}
+    </view>
+    <input class="picker-search" style="margin-top:16rpx" value="{{keyword}}" bindinput="onKeyword" placeholder="搜索附近门店" confirm-type="search" />
   </view>
 
   <page-state
@@ -26,9 +30,14 @@
           <view class="subtitle">{{item.store_name}}</view>
           <view class="tag {{item.business_status === 'preparing' ? 'tag-warning' : (item.business_status === 'closed' ? 'tag-muted' : 'tag-success')}}">{{item.status_text}}</view>
         </view>
+        <view wx:if="{{item.distance_text}}" class="muted">距您 {{item.distance_text}}</view>
         <view class="muted ellipsis">{{item.city || ''}}{{item.district || ''}}</view>
         <view class="muted ellipsis">{{item.address}}</view>
       </view>
     </view>
+  </view>
+
+  <view class="card">
+    <view class="btn btn-ghost btn-block" bindtap="scan">扫描门店二维码</view>
   </view>
 </view>

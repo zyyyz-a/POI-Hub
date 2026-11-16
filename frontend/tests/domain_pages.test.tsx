@@ -57,6 +57,27 @@ describe('domain page interactions', () => {
     expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({ capability: 'local_life', secrets: { app_secret: 'secret-value' } })
   })
 
+  it('updates an existing connection without sending blank secret fields', async () => {
+    const row = { id: 'c-live', capability: 'service_poi', mode: 'mock', status: 'authorized', app_id: null, merchant_id: null, mock_scenario: 'healthy' }
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      if (String(input).endsWith('/connections/c-live') && init?.method === 'PATCH') return json({ ...row, mode: 'live', app_id: 'wx-live' })
+      return json([row])
+    })
+    setCsrfToken('csrf')
+    renderPage(<ConnectionsPage />)
+    expect(await screen.findByText('腾讯位置／服务 POI')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '配置' }))
+    fireEvent.mouseDown(screen.getAllByRole('combobox')[1])
+    fireEvent.click(await screen.findByText('真实微信'))
+    fireEvent.change(screen.getByLabelText('AppID'), { target: { value: 'wx-live' } })
+    fireEvent.change(screen.getByLabelText('AppSecret（不修改请留空）'), { target: { value: 'new-secret' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存配置' }))
+    await waitFor(() => expect(callsFor(fetchMock, '/connections/c-live')).toHaveLength(1))
+    const payload = JSON.parse(String(callsFor(fetchMock, '/connections/c-live')[0][1]?.body))
+    expect(payload).toMatchObject({ mode: 'live', app_id: 'wx-live', secrets: { app_secret: 'new-secret' } })
+    expect(payload.secrets).not.toHaveProperty('callback_token')
+  })
+
   it('creates a member invitation and displays the returned invite token', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => String(input).includes('/members/invitations') ? json({ invite_token: 'invite-123' }, 201) : json([]))
     renderPage(<MembersPage />)

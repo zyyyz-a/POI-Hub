@@ -1,0 +1,17 @@
+.deepseek-launcher { position: fixed; z-index: 1000; bottom: 24px; right: 24px; height: 46px; box-shadow: 0 6px 24px #102a4329; }
+.deepseek-drawer .ant-drawer-body { padding: 18px; }
+.deepseek-layout { display: flex; flex-direction: column; height: 100%; gap: 12px; }
+.deepseek-settings { display: grid; gap: 10px; padding: 14px; border: 1px solid #dae3ef; border-radius: 10px; background: #f5f8fc; }
+.deepseek-settings p, .deepseek-welcome p { margin: 0; color: #536880; font-size: 13px; }
+.deepseek-layout small { color: #718096; font-size: 12px; }
+.deepseek-history { flex: 1; min-height: 100px; overflow-y: auto; overscroll-behavior: contain; }
+.deepseek-welcome { padding: 8px 0; }
+.deepseek-welcome .ant-space { margin-top: 14px; }
+.deepseek-message { padding: 12px; margin: 10px 0; border-radius: 10px; color: #243b53; background: #f2f5f9; }
+.deepseek-message.user { margin-left: 24px; background: #e9f0ff; }
+.deepseek-message strong { display: block; margin-bottom: 6px; font-size: 12px; color: #627d98; }
+.deepseek-message div { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.75; }
+.deepseek-composer { display: grid; gap: 10px; border-top: 1px solid #e5edf5; padding-top: 10px; }
+.deepseek-context { display: flex; align-items: center; justify-content: space-between; color: #627d98; font-size: 12px; }
+.deepseek-working { display: flex; gap: 10px; padding: 12px; color: #627d98; }
+@media (max-width: 640px) { .deepseek-launcher { bottom: 16px; right: 16px; } .deepseek-drawer .ant-drawer-body { padding: 12px; } }

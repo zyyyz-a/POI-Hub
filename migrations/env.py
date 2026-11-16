@@ -25,6 +25,7 @@ from poi_admin.core.orm import Base  # noqa: E402
 from poi_admin.direct_commerce import models as direct_commerce_models  # noqa: E402, F401
 from poi_admin.identity import models as identity_models  # noqa: E402, F401
 from poi_admin.local_life import models as local_life_models  # noqa: E402, F401
+from poi_admin.merchant_applyments import models as applyment_models  # noqa: E402, F401
 from poi_admin.onboarding import models as onboarding_models  # noqa: E402, F401
 from poi_admin.operations import models as operation_models  # noqa: E402, F401
 from poi_admin.stores import models as store_models  # noqa: E402, F401
